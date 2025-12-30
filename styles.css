@@ -1041,6 +1041,111 @@ body {
     line-height: 1.5;
 }
 
+/* Crime Details Button */
+.crime-details-button-container {
+    margin-top: 15px;
+    text-align: center;
+}
+
+.btn-small {
+    padding: 10px 20px;
+    font-size: 14px;
+}
+
+/* Crime Details Modal */
+.modal-medium {
+    max-width: 500px;
+}
+
+.crime-comparison-section {
+    margin-bottom: 25px;
+    padding: 15px;
+    background-color: var(--gray-pale);
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--pink-primary);
+}
+
+.crime-comparison-section h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 16px;
+    color: var(--gray-dark);
+}
+
+.crime-comparison-text {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--pink-primary);
+    margin: 0;
+}
+
+.crime-breakdown-section h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 16px;
+    color: var(--gray-dark);
+}
+
+.severity-group {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: var(--gray-pale);
+    border-radius: var(--radius-md);
+}
+
+.severity-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.severity-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.severity-badge.severity-high {
+    background-color: #ffebee;
+    color: #c62828;
+}
+
+.severity-badge.severity-medium {
+    background-color: #fff3e0;
+    color: #ef6c00;
+}
+
+.severity-badge.severity-low {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+}
+
+.severity-count {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--gray-dark);
+}
+
+.severity-details {
+    font-size: 13px;
+    color: var(--gray-medium);
+    font-style: italic;
+}
+
+.total-crimes {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 2px solid var(--gray-lighter);
+    text-align: center;
+    font-size: 15px;
+    color: var(--gray-dark);
+}
+
 .features-list {
     display: flex;
     flex-wrap: wrap;

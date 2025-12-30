@@ -1267,27 +1267,89 @@ function updateSafetyDisplay() {
         }
     }
 
-    // PHASE 2B: Update disclaimer based on crime data availability
+    // PHASE 2C: Update disclaimer and show/hide crime details button
     const disclaimer = document.getElementById('safety-disclaimer');
+    const crimeDetailsBtn = document.getElementById('crime-details-btn-container');
 
     if (currentRouteData.usingCrimeData) {
         // Using real SF crime data
         if (disclaimer) {
             disclaimer.textContent = 'Safety score includes real crime data from San Francisco Police Department (last 90 days).';
         }
+        // Show crime details button
+        if (crimeDetailsBtn) {
+            crimeDetailsBtn.style.display = 'block';
+        }
     } else if (currentRouteData.inSanFrancisco) {
         // In SF but crime data unavailable
         if (disclaimer) {
             disclaimer.textContent = 'Crime data temporarily unavailable. Score based on route characteristics.';
+        }
+        // Hide crime details button
+        if (crimeDetailsBtn) {
+            crimeDetailsBtn.style.display = 'none';
         }
     } else {
         // Outside SF
         if (disclaimer) {
             disclaimer.textContent = 'San Francisco, CA used for testing. Other cities with crime data coming soon.';
         }
+        // Hide crime details button
+        if (crimeDetailsBtn) {
+            crimeDetailsBtn.style.display = 'none';
+        }
     }
 
     console.log('✅ Safety display updated');
+}
+
+// Open crime details modal (PHASE 2C)
+function openCrimeDetailsModal() {
+    const breakdown = currentRouteData.safetyBreakdown;
+    if (!breakdown || !breakdown.crimeData) {
+        alert('Crime data not available');
+        return;
+    }
+
+    const crimeData = breakdown.crimeData;
+
+    // Update comparison text
+    const comparisonText = document.getElementById('crime-comparison-text');
+    if (comparisonText) {
+        comparisonText.textContent = crimeData.comparisonText;
+    }
+
+    // Update severity counts
+    document.getElementById('high-severity-count').textContent = crimeData.highSeverity;
+    document.getElementById('medium-severity-count').textContent = crimeData.mediumSeverity;
+    document.getElementById('low-severity-count').textContent = crimeData.lowSeverity;
+    document.getElementById('total-crimes-count').textContent = crimeData.count;
+
+    // Update severity details (for now, just show counts - can add crime type breakdown later)
+    const highDetails = document.getElementById('high-severity-details');
+    const mediumDetails = document.getElementById('medium-severity-details');
+    const lowDetails = document.getElementById('low-severity-details');
+
+    if (crimeData.highSeverity === 0) {
+        highDetails.textContent = 'No high-severity crimes found';
+    } else {
+        highDetails.textContent = `Includes violent crimes (robbery, assault, homicide, etc.)`;
+    }
+
+    if (crimeData.mediumSeverity === 0) {
+        mediumDetails.textContent = 'No medium-severity crimes found';
+    } else {
+        mediumDetails.textContent = `Includes property crimes (burglary, vehicle theft, arson, etc.)`;
+    }
+
+    if (crimeData.lowSeverity === 0) {
+        lowDetails.textContent = 'No low-severity crimes found';
+    } else {
+        lowDetails.textContent = `Includes theft, vandalism, drug offenses, etc.`;
+    }
+
+    // Open the modal
+    openModal('crime-details-modal');
 }
 
 // Update individual breakdown item
@@ -1514,8 +1576,88 @@ function sampleRoutePoints(coordinates, intervalMiles) {
     return samplePoints;
 }
 
-// Score crime data with moderate sensitivity (PHASE 2B)
-function scoreCrimeData(crimes, routeLengthMiles, timeOfDay) {
+// Calculate area baseline for relative crime scoring (3-mile radius)
+async function calculateAreaBaseline(midpointLat, midpointLng) {
+    console.log('📊 Calculating area baseline for comparison...');
+
+    try {
+        // Query crimes in 3-mile radius (city-wide comparison)
+        const radiusMeters = 3 * 1609.34; // 3 miles to meters
+
+        // Check cache first (use larger grid for baseline)
+        const cacheKey = `baseline_${midpointLat.toFixed(1)}_${midpointLng.toFixed(1)}`;
+        const cached = crimeCache.get(cacheKey);
+
+        if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+            console.log('📦 Using cached baseline data');
+            return cached.data;
+        }
+
+        // Build API query for baseline area
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - CRIME_API.daysBack);
+        const startDateStr = startDate.toISOString().split('T')[0];
+
+        const whereClause = `within_circle(point, ${midpointLat}, ${midpointLng}, ${radiusMeters}) AND incident_datetime > '${startDateStr}'`;
+        const selectFields = 'incident_category,incident_datetime';
+
+        const url = `${CRIME_API.baseUrl}?` +
+                    `$$app_token=${CRIME_API.appToken}&` +
+                    `$where=${encodeURIComponent(whereClause)}&` +
+                    `$select=${selectFields}&` +
+                    `$limit=5000`; // Higher limit for baseline
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            console.log('⚠️ Baseline query failed, using absolute scoring');
+            return null;
+        }
+
+        const crimes = await response.json();
+
+        console.log(`✅ Baseline: ${crimes.length} crimes in 3-mile radius`);
+
+        // Calculate baseline density (crimes per square mile)
+        const areaSqMiles = Math.PI * 3 * 3; // π * r²
+        const baselineDensity = crimes.length / areaSqMiles;
+
+        // Calculate weighted baseline
+        let weightedBaseline = 0;
+        crimes.forEach(crime => {
+            const weight = CRIME_WEIGHTS[crime.incident_category] || 1.0;
+            if (weight > 0) {
+                weightedBaseline += weight;
+            }
+        });
+
+        const baselineWeightedDensity = weightedBaseline / areaSqMiles;
+
+        const baselineData = {
+            totalCrimes: crimes.length,
+            density: baselineDensity,
+            weightedDensity: baselineWeightedDensity
+        };
+
+        // Cache the baseline
+        crimeCache.set(cacheKey, {
+            data: baselineData,
+            timestamp: Date.now()
+        });
+
+        console.log(`📊 Baseline weighted density: ${baselineWeightedDensity.toFixed(2)} crimes/sq mi`);
+
+        return baselineData;
+
+    } catch (error) {
+        console.error('❌ Error calculating baseline:', error);
+        return null;
+    }
+}
+
+// Score crime data with relative scoring (PHASE 2C - Graded Curve)
+function scoreCrimeData(crimes, routeLengthMiles, timeOfDay, areaBaseline = null) {
     if (!crimes || crimes.length === 0) {
         console.log('✅ No crimes found - excellent safety score');
         return 100; // No crimes = perfect score
@@ -1562,26 +1704,77 @@ function scoreCrimeData(crimes, routeLengthMiles, timeOfDay) {
     // Calculate crimes per mile (normalize by route length)
     const crimesPerMile = weightedCrimeCount / Math.max(routeLengthMiles, 0.5);
 
-    // Moderate scoring: 0-5 crimes/mile = Good to Excellent
-    //                  5-15 crimes/mile = Fair
-    //                  15+ crimes/mile = Caution
     let score;
-    if (crimesPerMile <= 5) {
-        // Linear scale: 0 crimes = 100, 5 crimes/mile = 70
-        score = 100 - (crimesPerMile * 6);
-    } else if (crimesPerMile <= 15) {
-        // Linear scale: 5 crimes/mile = 70, 15 crimes/mile = 40
-        score = 70 - ((crimesPerMile - 5) * 3);
+    let comparisonText = '';
+    let percentDifference = 0;
+
+    // RELATIVE SCORING: Compare to area baseline if available
+    if (areaBaseline && areaBaseline.weightedDensity > 0) {
+        console.log(`📊 Using relative scoring (graded curve)`);
+        console.log(`   Route density: ${crimesPerMile.toFixed(2)} crimes/mile`);
+        console.log(`   Area baseline: ${areaBaseline.weightedDensity.toFixed(2)} crimes/sq mi`);
+
+        // Convert route crimes/mile to crimes/sq mile for comparison
+        // Approximate: assume route corridor is 0.1 mile wide (528 ft)
+        const routeDensitySqMi = crimesPerMile / 0.1;
+
+        // Calculate relative ratio
+        const relativeRatio = routeDensitySqMi / areaBaseline.weightedDensity;
+
+        // Calculate percentage difference
+        percentDifference = ((areaBaseline.weightedDensity - routeDensitySqMi) / areaBaseline.weightedDensity) * 100;
+
+        // Relative scoring: 100 - (ratio * 50)
+        // If route = baseline → ratio = 1.0 → score = 50
+        // If route < baseline (safer) → ratio < 1.0 → score > 50
+        // If route > baseline (worse) → ratio > 1.0 → score < 50
+        score = 100 - (relativeRatio * 50);
+
+        // Clamp to reasonable range
+        score = Math.max(10, Math.min(100, score));
+
+        // Generate comparison text
+        if (percentDifference > 15) {
+            comparisonText = `${Math.abs(percentDifference).toFixed(0)}% safer than area average`;
+        } else if (percentDifference < -15) {
+            comparisonText = `${Math.abs(percentDifference).toFixed(0)}% higher than area average`;
+        } else {
+            comparisonText = `Similar to area average`;
+        }
+
+        console.log(`🛡️ Relative crime score: ${score.toFixed(1)}/100 (${comparisonText})`);
+
     } else {
-        // Logarithmic decline for very high crime
-        score = Math.max(20, 40 - Math.log10(crimesPerMile - 14) * 15);
+        // ABSOLUTE SCORING: Fallback if no baseline
+        console.log(`📊 Using absolute scoring (no baseline available)`);
+
+        if (crimesPerMile <= 5) {
+            // Linear scale: 0 crimes = 100, 5 crimes/mile = 70
+            score = 100 - (crimesPerMile * 6);
+        } else if (crimesPerMile <= 15) {
+            // Linear scale: 5 crimes/mile = 70, 15 crimes/mile = 40
+            score = 70 - ((crimesPerMile - 5) * 3);
+        } else {
+            // Logarithmic decline for very high crime
+            score = Math.max(20, 40 - Math.log10(crimesPerMile - 14) * 15);
+        }
+
+        score = Math.max(0, Math.min(100, score));
+        comparisonText = 'Absolute scoring (no baseline)';
+
+        console.log(`🛡️ Crime score: ${score.toFixed(1)}/100 (${crimesPerMile.toFixed(1)} weighted crimes/mile)`);
     }
 
-    score = Math.max(0, Math.min(100, score)); // Clamp to 0-100
-
-    console.log(`🛡️ Crime score: ${score.toFixed(1)}/100 (${crimesPerMile.toFixed(1)} weighted crimes/mile)`);
-
-    return score;
+    // Return detailed breakdown
+    return {
+        score: score,
+        totalCrimes: crimes.length,
+        highSeverity: highSeverity,
+        mediumSeverity: mediumSeverity,
+        lowSeverity: lowSeverity,
+        comparisonText: comparisonText,
+        percentDifference: percentDifference
+    };
 }
 
 // ========================================
@@ -1603,9 +1796,11 @@ async function calculateSafetyScore(route, startLocation, endLocation) {
 
     let crimeScore = null;
     let crimeData = null;
+    let crimeBreakdown = null;
+    let areaBaseline = null;
     let usingCrimeData = false;
 
-    // PHASE 2B: Try to get real crime data if in San Francisco
+    // PHASE 2C: Try to get real crime data if in San Francisco
     if (inSF) {
         console.log('📍 Route is in San Francisco - querying crime data...');
 
@@ -1613,8 +1808,16 @@ async function calculateSafetyScore(route, startLocation, endLocation) {
             crimeData = await queryCrimesAlongRoute(route.coordinates);
 
             if (crimeData !== null) {
-                // Successfully got crime data
-                crimeScore = scoreCrimeData(crimeData, distanceMiles, hour);
+                // Calculate route midpoint for baseline
+                const midLat = (startLocation.lat + endLocation.lat) / 2;
+                const midLng = (startLocation.lng + endLocation.lng) / 2;
+
+                // Get area baseline for relative scoring
+                areaBaseline = await calculateAreaBaseline(midLat, midLng);
+
+                // Score crime data with baseline
+                crimeBreakdown = scoreCrimeData(crimeData, distanceMiles, hour, areaBaseline);
+                crimeScore = crimeBreakdown.score;
                 usingCrimeData = true;
                 console.log('✅ Using real SF crime data for scoring');
             } else {
@@ -1639,17 +1842,26 @@ async function calculateSafetyScore(route, startLocation, endLocation) {
 
     if (usingCrimeData) {
         // PHASE 2B: New weighted formula with crime data
-        totalScore = (crimeScore * 0.40) +           // Crime data - 40%
+        totalScore = (crimeScore * 0.50) +           // Crime data - 50%
                      (timeScore * 0.20) +            // Time of day - 20%
-                     (lengthScore * 0.15) +          // Route length - 15%
-                     (complexityScore * 0.15) +      // Complexity - 15%
+                     (lengthScore * 0.10) +          // Route length - 10%
+                     (complexityScore * 0.10) +      // Complexity - 10%
                      (roadTypeScore * 0.10);         // Road type - 10%
 
         breakdown = {
-            crimeData: { score: crimeScore, weight: 40, count: crimeData.length },
+            crimeData: {
+                score: crimeScore,
+                weight: 50,
+                count: crimeData.length,
+                highSeverity: crimeBreakdown.highSeverity,
+                mediumSeverity: crimeBreakdown.mediumSeverity,
+                lowSeverity: crimeBreakdown.lowSeverity,
+                comparisonText: crimeBreakdown.comparisonText,
+                percentDifference: crimeBreakdown.percentDifference
+            },
             timeOfDay: { score: timeScore, weight: 20 },
-            routeLength: { score: lengthScore, weight: 15 },
-            complexity: { score: complexityScore, weight: 15 },
+            routeLength: { score: lengthScore, weight: 10 },
+            complexity: { score: complexityScore, weight: 10 },
             roadType: { score: roadTypeScore, weight: 10 }
         };
     } else {
