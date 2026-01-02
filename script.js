@@ -22,6 +22,8 @@ let startMarker = null;
 let destinationMarker = null;
 let crimeMarkerClusterGroup = null; // Crime markers on route map
 let navCrimeMarkerClusterGroup = null; // Crime markers on navigation map
+let ombreRouteLayer = null; // Ombre-colored route on route map
+let navOmbreRouteLayer = null; // Ombre-colored route on navigation map
 
 // Tile layers for light/dark mode
 let lightTileLayer = null;
@@ -934,6 +936,25 @@ function displayRouteOnNavigationMap() {
             }
         }
 
+        // Draw ombre-colored route on navigation map
+        if (currentRouteData.crimeSamples && currentRouteData.crimeSamples.length > 0) {
+            // Remove existing ombre route if any
+            if (navOmbreRouteLayer && navigationMap) {
+                navigationMap.removeLayer(navOmbreRouteLayer);
+            }
+
+            // Draw the ombre route
+            navOmbreRouteLayer = drawOmbreRoute(navigationMap, route.coordinates, currentRouteData.crimeSamples);
+
+            // Hide the default routing control line (pink line)
+            if (routingControl) {
+                const routePaths = navigationMap.getPane('overlayPane').querySelectorAll('.leaflet-routing-container path');
+                routePaths.forEach(path => {
+                    path.style.opacity = '0'; // Hide default route line
+                });
+            }
+        }
+
         // Ensure map is properly sized after route is added
         setTimeout(() => {
             if (navigationMap) {
@@ -1111,6 +1132,7 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
             inSanFrancisco: safetyData.inSanFrancisco,
             crimeCount: safetyData.breakdown.crimeData?.count || 0,
             rawCrimeData: safetyData.rawCrimeData, // Store raw crime array for modal
+            crimeSamples: safetyData.crimeSamples, // Store crime samples for ombre route
             showNighttimeWarning: safetyData.showNighttimeWarning // Nighttime warning flag
         };
 
@@ -1143,6 +1165,28 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
                 crimeMarkerClusterGroup = addCrimeMarkersToMap(map, recentCrimes, route);
             } else {
                 console.log('ℹ️ No recent violent/theft crimes in last 7 days');
+            }
+        }
+
+        // Draw ombre-colored route based on crime density
+        if (currentRouteData.crimeSamples && currentRouteData.crimeSamples.length > 0) {
+            // Remove existing ombre route if any
+            if (ombreRouteLayer && map) {
+                map.removeLayer(ombreRouteLayer);
+            }
+
+            // Draw the ombre route
+            ombreRouteLayer = drawOmbreRoute(map, route.coordinates, currentRouteData.crimeSamples);
+
+            // Hide the default routing control line (pink line)
+            if (routingControl) {
+                const routingContainer = routingControl.getContainer();
+                if (routingContainer) {
+                    const routePaths = map.getPane('overlayPane').querySelectorAll('.leaflet-routing-container path');
+                    routePaths.forEach(path => {
+                        path.style.opacity = '0'; // Hide default route line
+                    });
+                }
             }
         }
     });
@@ -1730,7 +1774,17 @@ async function queryCrimesAlongRoute(routeCoordinates) {
 
         console.log(`✅ Total unique crimes found along route: ${allCrimes.length}`);
 
-        return allCrimes;
+        // Combine sample points with their crime data for ombre route coloring
+        const crimeSamples = samplePoints.map((point, index) => ({
+            lat: point.lat,
+            lng: point.lng,
+            crimes: crimeResults[index] || []
+        }));
+
+        return {
+            allCrimes: allCrimes,
+            crimeSamples: crimeSamples
+        };
 
     } catch (error) {
         console.error('❌ Error analyzing route crime data:', error);
@@ -2085,14 +2139,54 @@ function addCrimeMarkersToMap(map, crimes, route) {
         zoomToBoundsOnClick: true,
         iconCreateFunction: function(cluster) {
             const count = cluster.getChildCount();
-            let size = 'small';
-            if (count > 10) size = 'large';
-            else if (count > 5) size = 'medium';
+
+            // Determine size-based dimensions
+            let outerSize, innerSize, fontSize;
+            if (count > 10) {
+                outerSize = 50;
+                innerSize = 44;
+                fontSize = 16;
+            } else if (count > 5) {
+                outerSize = 40;
+                innerSize = 34;
+                fontSize = 14;
+            } else {
+                outerSize = 30;
+                innerSize = 24;
+                fontSize = 12;
+            }
 
             return L.divIcon({
-                html: `<div><span>${count}</span></div>`,
-                className: `crime-marker-cluster crime-marker-cluster-${size}`,
-                iconSize: L.point(40, 40)
+                html: `
+                    <div style="
+                        width: ${outerSize}px;
+                        height: ${outerSize}px;
+                        background-color: rgba(255, 20, 147, 0.3);
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    ">
+                        <div style="
+                            width: ${innerSize}px;
+                            height: ${innerSize}px;
+                            background-color: #dc143c;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        ">
+                            <span style="
+                                color: white;
+                                font-weight: 700;
+                                font-size: ${fontSize}px;
+                                text-align: center;
+                            ">${count}</span>
+                        </div>
+                    </div>
+                `,
+                className: 'crime-marker-cluster-custom',
+                iconSize: L.point(outerSize, outerSize)
             });
         }
     });
@@ -2157,6 +2251,88 @@ function addCrimeMarkersToMap(map, crimes, route) {
     return crimeClusterGroup;
 }
 
+// Get color for route segment based on crime density
+function getSegmentColor(crimeCount) {
+    // Absolute scale: crimes per 0.15 mile segment
+    if (crimeCount === 0) return '#48bb78'; // Green - no crimes
+    if (crimeCount <= 2) return '#68d391'; // Light green - very few crimes
+    if (crimeCount <= 5) return '#ed8936'; // Orange - moderate crimes
+    if (crimeCount <= 10) return '#f56565'; // Light red - many crimes
+    return '#dc143c'; // Dark red - very high crime
+}
+
+// Draw ombre-colored route based on crime density
+function drawOmbreRoute(map, routeCoordinates, crimeSamples) {
+    if (!map || !routeCoordinates || routeCoordinates.length === 0) {
+        console.log('ℹ️ Cannot draw ombre route: missing data');
+        return null;
+    }
+
+    console.log(`🎨 Drawing ombre route with ${crimeSamples.length} crime samples...`);
+
+    const ombreLayerGroup = L.layerGroup();
+
+    // Create segments between sample points
+    for (let i = 0; i < crimeSamples.length - 1; i++) {
+        const currentSample = crimeSamples[i];
+        const nextSample = crimeSamples[i + 1];
+
+        // Get crime count for this segment
+        const crimeCount = currentSample.crimes ? currentSample.crimes.length : 0;
+        const segmentColor = getSegmentColor(crimeCount);
+
+        // Find route coordinates between these two sample points
+        const segmentCoords = [];
+        let startFound = false;
+
+        for (let j = 0; j < routeCoordinates.length; j++) {
+            const coord = routeCoordinates[j];
+            const distToCurrent = calculateDistance(
+                coord.lat, coord.lng,
+                currentSample.lat, currentSample.lng
+            );
+            const distToNext = calculateDistance(
+                coord.lat, coord.lng,
+                nextSample.lat, nextSample.lng
+            );
+
+            // Include points close to current sample or between current and next
+            if (distToCurrent < 0.01 || (startFound && distToNext > 0.01)) {
+                segmentCoords.push([coord.lat, coord.lng]);
+                if (!startFound) startFound = true;
+            }
+
+            // Stop when we reach the next sample
+            if (distToNext < 0.01) {
+                segmentCoords.push([coord.lat, coord.lng]);
+                break;
+            }
+        }
+
+        // If we didn't find route coords, just draw a line between samples
+        if (segmentCoords.length < 2) {
+            segmentCoords.push([currentSample.lat, currentSample.lng]);
+            segmentCoords.push([nextSample.lat, nextSample.lng]);
+        }
+
+        // Create polyline for this segment
+        const polyline = L.polyline(segmentCoords, {
+            color: segmentColor,
+            weight: 6,
+            opacity: 0.8,
+            lineJoin: 'round',
+            lineCap: 'round'
+        });
+
+        ombreLayerGroup.addLayer(polyline);
+    }
+
+    ombreLayerGroup.addTo(map);
+    console.log(`✅ Ombre route drawn with ${crimeSamples.length - 1} colored segments`);
+
+    return ombreLayerGroup;
+}
+
 // ========================================
 // SAFETY SCORING ALGORITHM (PHASE 2)
 // ========================================
@@ -2179,15 +2355,19 @@ async function calculateSafetyScore(route, startLocation, endLocation) {
     let crimeBreakdown = null;
     let areaBaseline = null;
     let usingCrimeData = false;
+    let crimeSamples = null; // Crime samples for ombre route coloring
 
     // PHASE 2C: Try to get real crime data if in San Francisco
     if (inSF) {
         console.log('📍 Route is in San Francisco - querying crime data...');
 
         try {
-            crimeData = await queryCrimesAlongRoute(route.coordinates);
+            const crimeResult = await queryCrimesAlongRoute(route.coordinates);
 
-            if (crimeData !== null) {
+            if (crimeResult !== null) {
+                crimeData = crimeResult.allCrimes; // Extract allCrimes array
+                crimeSamples = crimeResult.crimeSamples; // Extract crime samples for ombre route
+
                 // Calculate route midpoint for baseline
                 const midLat = (startLocation.lat + endLocation.lat) / 2;
                 const midLng = (startLocation.lng + endLocation.lng) / 2;
@@ -2300,6 +2480,7 @@ async function calculateSafetyScore(route, startLocation, endLocation) {
         usingCrimeData: usingCrimeData,
         inSanFrancisco: inSF,
         rawCrimeData: crimeData, // Store raw crime array for detailed analysis
+        crimeSamples: crimeSamples, // Crime samples for ombre route coloring
         showNighttimeWarning: showNighttimeWarning // Nighttime warning flag
     };
 }
