@@ -1941,13 +1941,13 @@ function analyzeDayNightCrimes(crimes, sunData) {
     let daytimeCrimes = 0;
     let nighttimeCrimes = 0;
 
+    // Get sunrise/sunset hours once (not per crime)
+    const sunriseHour = sunData.sunrise.getHours();
+    const sunsetHour = sunData.sunset.getHours();
+
     crimes.forEach(crime => {
         const crimeTime = new Date(crime.incident_datetime);
         const crimeHour = crimeTime.getHours();
-
-        // Get approximate sunrise/sunset hours for comparison
-        const sunriseHour = sunData.sunrise.getHours();
-        const sunsetHour = sunData.sunset.getHours();
 
         // Check if crime occurred at night (after sunset or before sunrise)
         if (crimeHour >= sunsetHour || crimeHour < sunriseHour) {
