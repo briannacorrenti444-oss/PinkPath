@@ -43,7 +43,8 @@ let currentRouteData = {
     safetyScore: null,      // 0-10 scale
     safetyLabel: null,      // "Excellent", "Good", "Fair", "Caution"
     safetyColor: null,      // CSS class name
-    safetyBreakdown: null   // Object with individual scores
+    safetyBreakdown: null,  // Object with individual scores
+    rawCrimeData: null      // Store raw crime array for detailed analysis
 };
 
 // Navigation state (Phase 3)
@@ -71,7 +72,7 @@ const CRIME_API = {
     appToken: 'HAsCpzT6ovtq42o9dY9OHqtmD',
     radiusMeters: 500, // ~0.3 miles radius for crime queries
     daysBack: 90, // Look back 90 days for recent crime trends
-    sampleInterval: 0.1 // Query crimes every 0.1 miles along route
+    sampleInterval: 0.15 // Query crimes every 0.15 miles along route (optimized from 0.1)
 };
 
 // Crime cache (24-hour cache to reduce API calls)
@@ -1079,7 +1080,8 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
             safetyBreakdown: safetyData.breakdown,
             usingCrimeData: safetyData.usingCrimeData,
             inSanFrancisco: safetyData.inSanFrancisco,
-            crimeCount: safetyData.breakdown.crimeData?.count || 0
+            crimeCount: safetyData.breakdown.crimeData?.count || 0,
+            rawCrimeData: safetyData.rawCrimeData // Store raw crime array for modal
         };
 
         console.log('✅ Route calculated successfully!');
@@ -1303,7 +1305,65 @@ function updateSafetyDisplay() {
     console.log('✅ Safety display updated');
 }
 
-// Open crime details modal (PHASE 2C)
+// Filter crimes to last 30 days for display
+function filterCrimesLast30Days(crimes) {
+    if (!crimes || crimes.length === 0) return [];
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+
+    return crimes.filter(crime => {
+        const crimeDate = new Date(crime.incident_datetime);
+        return crimeDate >= thirtyDaysAgo;
+    });
+}
+
+// Group crimes by type and count occurrences
+function groupCrimesByType(crimes) {
+    const grouped = {};
+
+    crimes.forEach(crime => {
+        const category = crime.incident_category;
+        if (!grouped[category]) {
+            grouped[category] = 0;
+        }
+        grouped[category]++;
+    });
+
+    // Sort by count (descending)
+    return Object.entries(grouped)
+        .sort((a, b) => b[1] - a[1])
+        .reduce((obj, [key, value]) => {
+            obj[key] = value;
+            return obj;
+        }, {});
+}
+
+// Get severity level for a crime category
+function getCrimeSeverity(category) {
+    const weight = CRIME_WEIGHTS[category] || 1.0;
+
+    if (weight >= 3.0) return 'high';
+    if (weight >= 2.0) return 'medium';
+    return 'low';
+}
+
+// Toggle crime details expanded section
+function toggleCrimeDetails() {
+    const expandedSection = document.getElementById('crime-details-expanded');
+    const button = document.getElementById('more-info-btn');
+
+    if (expandedSection.style.display === 'none') {
+        expandedSection.style.display = 'block';
+        button.textContent = 'Less Info ▲';
+    } else {
+        expandedSection.style.display = 'none';
+        button.textContent = 'More Info ▼';
+    }
+}
+
+// Open crime details modal (PHASE 2C - UPDATED)
 function openCrimeDetailsModal() {
     const breakdown = currentRouteData.safetyBreakdown;
     if (!breakdown || !breakdown.crimeData) {
@@ -1312,6 +1372,35 @@ function openCrimeDetailsModal() {
     }
 
     const crimeData = breakdown.crimeData;
+    const rawCrimes = currentRouteData.rawCrimeData || [];
+
+    // Filter to last 30 days for display
+    const last30DaysCrimes = filterCrimesLast30Days(rawCrimes);
+
+    // Group crimes by type
+    const crimesByType = groupCrimesByType(last30DaysCrimes);
+
+    // Categorize by severity
+    const highSeverityCrimes = {};
+    const mediumSeverityCrimes = {};
+    const lowSeverityCrimes = {};
+
+    let highCount = 0, mediumCount = 0, lowCount = 0;
+
+    Object.entries(crimesByType).forEach(([category, count]) => {
+        const severity = getCrimeSeverity(category);
+
+        if (severity === 'high') {
+            highSeverityCrimes[category] = count;
+            highCount += count;
+        } else if (severity === 'medium') {
+            mediumSeverityCrimes[category] = count;
+            mediumCount += count;
+        } else {
+            lowSeverityCrimes[category] = count;
+            lowCount += count;
+        }
+    });
 
     // Update comparison text
     const comparisonText = document.getElementById('crime-comparison-text');
@@ -1319,37 +1408,68 @@ function openCrimeDetailsModal() {
         comparisonText.textContent = crimeData.comparisonText;
     }
 
-    // Update severity counts
-    document.getElementById('high-severity-count').textContent = crimeData.highSeverity;
-    document.getElementById('medium-severity-count').textContent = crimeData.mediumSeverity;
-    document.getElementById('low-severity-count').textContent = crimeData.lowSeverity;
-    document.getElementById('total-crimes-count').textContent = crimeData.count;
+    // Update severity counts (30-day filtered data)
+    document.getElementById('high-severity-count').textContent = highCount;
+    document.getElementById('medium-severity-count').textContent = mediumCount;
+    document.getElementById('low-severity-count').textContent = lowCount;
+    document.getElementById('total-crimes-count').textContent = last30DaysCrimes.length;
 
-    // Update severity details (for now, just show counts - can add crime type breakdown later)
+    // Update severity details (basic descriptions)
     const highDetails = document.getElementById('high-severity-details');
     const mediumDetails = document.getElementById('medium-severity-details');
     const lowDetails = document.getElementById('low-severity-details');
 
-    if (crimeData.highSeverity === 0) {
-        highDetails.textContent = 'No high-severity crimes found';
+    if (highCount === 0) {
+        highDetails.textContent = 'No high-severity crimes found (last 30 days)';
     } else {
-        highDetails.textContent = `Includes violent crimes (robbery, assault, homicide, etc.)`;
+        highDetails.textContent = `Includes violent crimes (robbery, assault, homicide, etc.) - last 30 days`;
     }
 
-    if (crimeData.mediumSeverity === 0) {
-        mediumDetails.textContent = 'No medium-severity crimes found';
+    if (mediumCount === 0) {
+        mediumDetails.textContent = 'No medium-severity crimes found (last 30 days)';
     } else {
-        mediumDetails.textContent = `Includes property crimes (burglary, vehicle theft, arson, etc.)`;
+        mediumDetails.textContent = `Includes property crimes (burglary, vehicle theft, arson, etc.) - last 30 days`;
     }
 
-    if (crimeData.lowSeverity === 0) {
-        lowDetails.textContent = 'No low-severity crimes found';
+    if (lowCount === 0) {
+        lowDetails.textContent = 'No low-severity crimes found (last 30 days)';
     } else {
-        lowDetails.textContent = `Includes theft, vandalism, drug offenses, etc.`;
+        lowDetails.textContent = `Includes theft, vandalism, drug offenses, etc. - last 30 days`;
     }
+
+    // Populate detailed breakdown by type
+    populateCrimeTypeBreakdown('high-severity-types', highSeverityCrimes);
+    populateCrimeTypeBreakdown('medium-severity-types', mediumSeverityCrimes);
+    populateCrimeTypeBreakdown('low-severity-types', lowSeverityCrimes);
+
+    // Reset expanded section to collapsed
+    document.getElementById('crime-details-expanded').style.display = 'none';
+    document.getElementById('more-info-btn').textContent = 'More Info ▼';
 
     // Open the modal
     openModal('crime-details-modal');
+}
+
+// Populate crime type breakdown section
+function populateCrimeTypeBreakdown(elementId, crimesObj) {
+    const container = document.getElementById(elementId);
+
+    if (!crimesObj || Object.keys(crimesObj).length === 0) {
+        container.innerHTML = '<div style="color: var(--gray-medium); font-style: italic;">No incidents in this category</div>';
+        return;
+    }
+
+    let html = '';
+    Object.entries(crimesObj).forEach(([category, count]) => {
+        html += `
+            <div class="crime-type-item">
+                <span class="crime-type-name">${category}</span>
+                <span class="crime-type-count">${count} incident${count > 1 ? 's' : ''}</span>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
 }
 
 // Update individual breakdown item
@@ -1499,25 +1619,31 @@ async function queryCrimesAlongRoute(routeCoordinates) {
     console.log('🗺️ Analyzing crime data along route...');
 
     try {
-        // Sample points along the route (every ~0.1 miles)
+        // Sample points along the route (every ~0.15 miles - optimized)
         const samplePoints = sampleRoutePoints(routeCoordinates, CRIME_API.sampleInterval);
 
         console.log(`📍 Sampling ${samplePoints.length} points along route`);
 
-        // Query crimes near each sample point
-        // We'll do this sequentially to avoid overwhelming the API
+        // Query crimes near each sample point IN PARALLEL (optimized for speed)
+        console.log('🚀 Fetching crime data in parallel...');
+        const crimePromises = samplePoints.map(point =>
+            queryCrimesNearLocation(point.lat, point.lng)
+        );
+
+        // Wait for all API calls to complete
+        const crimeResults = await Promise.all(crimePromises);
+
+        // Check if any API call failed
+        if (crimeResults.some(result => result === null)) {
+            console.log('⚠️ One or more crime API calls failed - using fallback');
+            return null;
+        }
+
+        // Flatten results and remove duplicates
         let allCrimes = [];
         const crimeSets = new Set(); // Use Set to avoid duplicate crimes
 
-        for (const point of samplePoints) {
-            const crimes = await queryCrimesNearLocation(point.lat, point.lng);
-
-            if (crimes === null) {
-                // API error - return null to trigger fallback
-                return null;
-            }
-
-            // Add unique crimes to our set
+        crimeResults.forEach(crimes => {
             crimes.forEach(crime => {
                 // Create unique ID from crime data
                 const crimeId = `${crime.incident_category}_${crime.incident_datetime}_${crime.latitude}_${crime.longitude}`;
@@ -1526,7 +1652,7 @@ async function queryCrimesAlongRoute(routeCoordinates) {
                     allCrimes.push(crime);
                 }
             });
-        }
+        });
 
         console.log(`✅ Total unique crimes found along route: ${allCrimes.length}`);
 
@@ -1894,7 +2020,8 @@ async function calculateSafetyScore(route, startLocation, endLocation) {
         color: getSafetyColor(finalScore),
         breakdown: breakdown,
         usingCrimeData: usingCrimeData,
-        inSanFrancisco: inSF
+        inSanFrancisco: inSF,
+        rawCrimeData: crimeData // Store raw crime array for detailed analysis
     };
 }
 

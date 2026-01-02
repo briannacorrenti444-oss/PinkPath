@@ -624,17 +624,9 @@
                 </button>
             </div>
             <div class="modal-body">
-                <!-- Comparison to Area -->
-                <div class="crime-comparison-section">
-                    <h3>Comparison to Area</h3>
-                    <p class="crime-comparison-text" id="crime-comparison-text">
-                        Loading...
-                    </p>
-                </div>
-
                 <!-- Crime Breakdown by Severity -->
                 <div class="crime-breakdown-section">
-                    <h3>Crime Breakdown (Last 90 Days)</h3>
+                    <h3>Crime Breakdown (Last 30 Days)</h3>
 
                     <div class="severity-group">
                         <div class="severity-header">
@@ -667,7 +659,49 @@
                     </div>
 
                     <div class="total-crimes">
-                        <strong>Total:</strong> <span id="total-crimes-count">0</span> incidents analyzed
+                        <strong>Total:</strong> <span id="total-crimes-count">0</span> incidents (last 30 days)
+                        <button class="btn-text" id="more-info-btn" onclick="toggleCrimeDetails()">
+                            More Info ▼
+                        </button>
+                    </div>
+
+                    <!-- Collapsible Detailed Breakdown -->
+                    <div class="crime-details-expanded" id="crime-details-expanded" style="display: none;">
+                        <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+
+                        <!-- Comparison to Area -->
+                        <div class="crime-comparison-section">
+                            <h4>Comparison to Surrounding Area</h4>
+                            <p class="crime-comparison-text" id="crime-comparison-text">
+                                Loading...
+                            </p>
+                        </div>
+
+                        <!-- Detailed Crime Type Breakdown -->
+                        <div class="crime-type-breakdown">
+                            <h4>Detailed Breakdown by Crime Type (Last 30 Days)</h4>
+
+                            <div class="crime-type-group">
+                                <h5>High Severity Crimes</h5>
+                                <div id="high-severity-types" class="crime-type-list">
+                                    No data
+                                </div>
+                            </div>
+
+                            <div class="crime-type-group">
+                                <h5>Medium Severity Crimes</h5>
+                                <div id="medium-severity-types" class="crime-type-list">
+                                    No data
+                                </div>
+                            </div>
+
+                            <div class="crime-type-group">
+                                <h5>Low Severity Crimes</h5>
+                                <div id="low-severity-types" class="crime-type-list">
+                                    No data
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

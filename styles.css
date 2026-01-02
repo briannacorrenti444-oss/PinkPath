@@ -1146,6 +1146,88 @@ body {
     color: var(--gray-dark);
 }
 
+.btn-text {
+    background: none;
+    border: none;
+    color: var(--pink-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 5px 10px;
+    margin-left: 10px;
+    transition: var(--transition);
+}
+
+.btn-text:hover {
+    color: var(--pink-light);
+    text-decoration: underline;
+}
+
+.crime-details-expanded {
+    margin-top: 15px;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 1000px;
+    }
+}
+
+.crime-type-breakdown {
+    margin-top: 20px;
+}
+
+.crime-type-breakdown h4 {
+    font-size: 15px;
+    margin-bottom: 15px;
+    color: var(--gray-dark);
+}
+
+.crime-type-group {
+    margin-bottom: 20px;
+}
+
+.crime-type-group h5 {
+    font-size: 14px;
+    color: var(--gray-medium);
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.crime-type-list {
+    background-color: var(--gray-pale);
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--gray-dark);
+}
+
+.crime-type-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--gray-lighter);
+}
+
+.crime-type-item:last-child {
+    border-bottom: none;
+}
+
+.crime-type-name {
+    font-weight: 500;
+}
+
+.crime-type-count {
+    color: var(--gray-medium);
+    font-weight: 600;
+}
+
 .features-list {
     display: flex;
     flex-wrap: wrap;
