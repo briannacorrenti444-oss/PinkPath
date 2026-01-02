@@ -21,6 +21,7 @@ let currentRoute = null;
 let startMarker = null;
 let destinationMarker = null;
 let crimeMarkerClusterGroup = null; // Crime markers on route map
+let navCrimeMarkerClusterGroup = null; // Crime markers on navigation map
 
 // Tile layers for light/dark mode
 let lightTileLayer = null;
@@ -917,6 +918,21 @@ function displayRouteOnNavigationMap() {
 
         console.log('✅ Route displayed on navigation map');
         console.log(`📋 ${routeSteps.length} navigation steps ready`);
+
+        // Add crime markers to navigation map
+        if (currentRouteData.rawCrimeData && currentRouteData.rawCrimeData.length > 0) {
+            // Remove existing crime markers if any
+            if (navCrimeMarkerClusterGroup && navigationMap) {
+                navigationMap.removeLayer(navCrimeMarkerClusterGroup);
+            }
+
+            // Filter to recent violent crimes
+            const recentCrimes = filterRecentViolentCrimes(currentRouteData.rawCrimeData);
+
+            if (recentCrimes.length > 0) {
+                navCrimeMarkerClusterGroup = addCrimeMarkersToMap(navigationMap, recentCrimes, route);
+            }
+        }
 
         // Ensure map is properly sized after route is added
         setTimeout(() => {

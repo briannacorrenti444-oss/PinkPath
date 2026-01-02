@@ -873,21 +873,21 @@ body {
     transition: var(--transition);
 }
 
-/* Score colors based on safety level */
+/* Score colors based on safety level - consistent red/orange/green scheme */
 .score-excellent {
-    color: #48bb78 !important; /* Green */
+    color: var(--success) !important; /* Green */
 }
 
 .score-good {
-    color: #4299e1 !important; /* Blue */
+    color: var(--success) !important; /* Green */
 }
 
 .score-fair {
-    color: #ed8936 !important; /* Orange */
+    color: var(--warning) !important; /* Orange */
 }
 
 .score-caution {
-    color: #f56565 !important; /* Red */
+    color: var(--danger) !important; /* Red */
 }
 
 .score-info {
@@ -1014,21 +1014,21 @@ body {
     transition: width 0.6s ease, background-color 0.3s ease;
 }
 
-/* Fill colors based on score */
+/* Fill colors based on score - consistent red/orange/green scheme */
 .fill-excellent {
-    background: linear-gradient(90deg, #48bb78, #38a169);
+    background: linear-gradient(90deg, var(--success), #38a169);
 }
 
 .fill-good {
-    background: linear-gradient(90deg, #4299e1, #3182ce);
+    background: linear-gradient(90deg, var(--success), #38a169);
 }
 
 .fill-fair {
-    background: linear-gradient(90deg, #ed8936, #dd6b20);
+    background: linear-gradient(90deg, var(--warning), #dd6b20);
 }
 
 .fill-caution {
-    background: linear-gradient(90deg, #f56565, #e53e3e);
+    background: linear-gradient(90deg, var(--danger), #c53030);
 }
 
 .breakdown-note {
@@ -1471,9 +1471,9 @@ body {
     }
 }
 
-/* Crime Marker Clusters */
+/* Crime Marker Clusters - Override Leaflet defaults with app color scheme */
 .crime-marker-cluster {
-    background-color: rgba(220, 20, 60, 0.6);
+    background-color: rgba(255, 20, 147, 0.3) !important; /* Pink primary with transparency */
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1487,11 +1487,11 @@ body {
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background-color: rgba(220, 20, 60, 0.8);
+    background-color: var(--danger) !important; /* Solid red */
 }
 
 .crime-marker-cluster span {
-    color: white;
+    color: white !important;
     font-weight: 700;
     font-size: 12px;
     text-align: center;
