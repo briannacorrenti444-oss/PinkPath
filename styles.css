@@ -18,6 +18,7 @@
 
     --white: #ffffff;
     --success: #48bb78;
+    --warning: #ed8936;
     --danger: #dc143c;
 
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -1642,6 +1643,23 @@ body {
 
 .stat-value.safe {
     color: var(--success);
+}
+
+/* Safety score color classes */
+.stat-value.excellent {
+    color: var(--success);
+}
+
+.stat-value.good {
+    color: var(--success);
+}
+
+.stat-value.fair {
+    color: var(--warning);
+}
+
+.stat-value.caution {
+    color: var(--danger);
 }
 
 .stat-label {

@@ -1066,7 +1066,12 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
 
         // Convert to imperial units
         const distanceMiles = metersToMiles(distanceMeters);
-        const durationMinutes = secondsToMinutes(timeSeconds);
+
+        // MVP WORKAROUND: Calculate walking time manually due to OSRM demo server unreliability
+        // OSRM demo server returns inconsistent/incorrect walking times despite profile: 'foot'
+        // This manual calculation ensures accurate, consistent durations on both screens
+        // TODO: Remove this override when migrating to Google Maps API in production
+        const durationMinutes = (distanceMiles / 3.5) * 60; // 3.5 mph average walking speed
 
         // Format for display
         const distanceText = formatDistance(distanceMiles);
@@ -1231,6 +1236,16 @@ function updateRouteDisplay() {
     if (navDurationElement && currentRouteData.durationText) {
         navDurationElement.textContent = currentRouteData.durationText;
         console.log(`Updated nav duration: ${currentRouteData.durationText}`);
+    }
+
+    // Update navigation screen safety score
+    const navSafetyScoreElement = document.getElementById('nav-safety-score');
+    if (navSafetyScoreElement && currentRouteData.safetyScore) {
+        navSafetyScoreElement.textContent = currentRouteData.safetyScore.toFixed(1);
+        // Apply color class based on safety score
+        const colorClass = getSafetyColor(currentRouteData.safetyScore);
+        navSafetyScoreElement.className = 'stat-value ' + colorClass;
+        console.log(`Updated nav safety score: ${currentRouteData.safetyScore.toFixed(1)} (${colorClass})`);
     }
 
     console.log('✅ Route display updated');
@@ -2056,8 +2071,8 @@ async function calculateSafetyScore(route, startLocation, endLocation) {
         const now = new Date();
         const isNighttime = isAfterSunset(now, sunData.sunset);
 
-        // Show warning if: currently nighttime AND 50%+ crime increase at night
-        if (isNighttime && dayNightAnalysis.nighttimeIncreasePercent >= 50) {
+        // Show warning if: currently nighttime AND 25%+ crime increase at night
+        if (isNighttime && dayNightAnalysis.nighttimeIncreasePercent >= 25) {
             showNighttimeWarning = true;
             console.log(`⚠️ Nighttime warning triggered: ${dayNightAnalysis.nighttimeIncreasePercent.toFixed(0)}% crime increase at night`);
         }
@@ -2705,7 +2720,11 @@ function recalculateRoute() {
         const distanceMeters = route.summary.totalDistance;
         const timeSeconds = route.summary.totalTime;
         currentRouteData.distance = metersToMiles(distanceMeters);
-        currentRouteData.duration = secondsToMinutes(timeSeconds);
+
+        // MVP WORKAROUND: Calculate walking time manually (same as initial calculation)
+        // TODO: Remove when migrating to Google Maps API
+        currentRouteData.duration = (currentRouteData.distance / 3.5) * 60; // 3.5 mph walking speed
+
         currentRouteData.distanceText = formatDistance(currentRouteData.distance);
         currentRouteData.durationText = formatDuration(currentRouteData.duration);
 
