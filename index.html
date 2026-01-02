@@ -307,6 +307,15 @@
                     <h1 class="page-title">Your Safest Route</h1>
                 </div>
 
+                <!-- Nighttime Warning Banner (shown conditionally) -->
+                <div class="nighttime-warning-banner" id="nighttime-warning-banner" style="display: none;">
+                    <div class="warning-icon">⚠️</div>
+                    <div class="warning-content">
+                        <h3>NIGHTTIME ROUTE WARNING</h3>
+                        <p>This area experiences significantly higher crime rates after dark.</p>
+                    </div>
+                </div>
+
                 <!-- Route Visualization -->
                 <div class="card route-visualization-card">
                     <div id="route-map" class="google-map"></div>
@@ -316,11 +325,11 @@
                 <div class="card route-details-card">
                     <!-- Safety Score -->
                     <div class="score-header">
-                        <div class="safety-score">
-                            <span class="score-number">8.5</span>
+                        <div class="safety-score" id="safety-score-display" style="display: none;">
+                            <span class="score-number">--</span>
                             <div class="score-info">
                                 <span class="score-label">Safety Score</span>
-                                <span class="score-sublabel">Excellent</span>
+                                <span class="score-sublabel">Calculating...</span>
                             </div>
                         </div>
                         <div class="route-time">
@@ -334,23 +343,6 @@
                     </div>
 
                     <div class="divider"></div>
-
-                    <!-- Route Path -->
-                    <div class="route-path-info">
-                        <h3>Route Details</h3>
-                        <p class="route-path">Main St → Park Ave → Oak Boulevard</p>
-                    </div>
-
-                    <!-- Safety Features -->
-                    <div class="safety-features">
-                        <h3>Safety Features</h3>
-                        <div class="features-list">
-                            <span class="feature-tag">✓ Well-lit streets</span>
-                            <span class="feature-tag">✓ High foot traffic</span>
-                            <span class="feature-tag">✓ Low crime area</span>
-                            <span class="feature-tag">✓ Active area</span>
-                        </div>
-                    </div>
 
                     <!-- Safety Score Breakdown -->
                     <div class="safety-breakdown">

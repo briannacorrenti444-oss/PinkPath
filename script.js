@@ -79,6 +79,13 @@ const CRIME_API = {
 const crimeCache = new Map();
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
+// Sunrise-Sunset API Configuration
+const SUNSET_API = {
+    baseUrl: 'https://api.sunrise-sunset.org/json',
+    cache: new Map(), // Cache sunset/sunrise data
+    cacheDuration: CACHE_DURATION
+};
+
 // San Francisco bounding box (to detect if route is in SF)
 const SF_BOUNDS = {
     north: 37.8324,
@@ -1081,7 +1088,8 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
             usingCrimeData: safetyData.usingCrimeData,
             inSanFrancisco: safetyData.inSanFrancisco,
             crimeCount: safetyData.breakdown.crimeData?.count || 0,
-            rawCrimeData: safetyData.rawCrimeData // Store raw crime array for modal
+            rawCrimeData: safetyData.rawCrimeData, // Store raw crime array for modal
+            showNighttimeWarning: safetyData.showNighttimeWarning // Nighttime warning flag
         };
 
         console.log('✅ Route calculated successfully!');
@@ -1237,6 +1245,12 @@ function updateSafetyDisplay() {
         return;
     }
 
+    // Show the safety score display (was hidden initially)
+    const safetyScoreDisplay = document.getElementById('safety-score-display');
+    if (safetyScoreDisplay) {
+        safetyScoreDisplay.style.display = 'flex';
+    }
+
     // Update score number
     const scoreNumber = document.querySelector('.score-number');
     if (scoreNumber) {
@@ -1299,6 +1313,17 @@ function updateSafetyDisplay() {
         // Hide crime details button
         if (crimeDetailsBtn) {
             crimeDetailsBtn.style.display = 'none';
+        }
+    }
+
+    // Show/hide nighttime warning banner
+    const warningBanner = document.getElementById('nighttime-warning-banner');
+    if (warningBanner) {
+        if (currentRouteData.showNighttimeWarning) {
+            warningBanner.style.display = 'flex';
+            console.log('⚠️ Nighttime warning banner displayed');
+        } else {
+            warningBanner.style.display = 'none';
         }
     }
 
@@ -1903,6 +1928,57 @@ function scoreCrimeData(crimes, routeLengthMiles, timeOfDay, areaBaseline = null
     };
 }
 
+// Analyze day vs night crime rates
+function analyzeDayNightCrimes(crimes, sunData) {
+    if (!crimes || crimes.length === 0 || !sunData) {
+        return {
+            daytimeCrimes: 0,
+            nighttimeCrimes: 0,
+            nighttimeIncreasePercent: 0
+        };
+    }
+
+    let daytimeCrimes = 0;
+    let nighttimeCrimes = 0;
+
+    crimes.forEach(crime => {
+        const crimeTime = new Date(crime.incident_datetime);
+        const crimeHour = crimeTime.getHours();
+
+        // Get approximate sunrise/sunset hours for comparison
+        const sunriseHour = sunData.sunrise.getHours();
+        const sunsetHour = sunData.sunset.getHours();
+
+        // Check if crime occurred at night (after sunset or before sunrise)
+        if (crimeHour >= sunsetHour || crimeHour < sunriseHour) {
+            nighttimeCrimes++;
+        } else {
+            daytimeCrimes++;
+        }
+    });
+
+    // Calculate percentage increase
+    let nighttimeIncreasePercent = 0;
+    if (daytimeCrimes > 0) {
+        // Normalize by hours (day vs night have different durations)
+        const dayHours = sunsetHour - sunriseHour;
+        const nightHours = 24 - dayHours;
+
+        const daytimeRate = daytimeCrimes / dayHours;
+        const nighttimeRate = nighttimeCrimes / nightHours;
+
+        nighttimeIncreasePercent = ((nighttimeRate - daytimeRate) / daytimeRate) * 100;
+    }
+
+    console.log(`📊 Day/Night Crime Analysis: ${daytimeCrimes} day, ${nighttimeCrimes} night (${nighttimeIncreasePercent.toFixed(0)}% increase at night)`);
+
+    return {
+        daytimeCrimes,
+        nighttimeCrimes,
+        nighttimeIncreasePercent
+    };
+}
+
 // ========================================
 // SAFETY SCORING ALGORITHM (PHASE 2)
 // ========================================
@@ -1957,11 +2033,35 @@ async function calculateSafetyScore(route, startLocation, endLocation) {
         console.log('ℹ️ Route outside San Francisco - using standard algorithm');
     }
 
+    // Determine location for sunset/sunrise (priority: user location → start location)
+    const locationForSunset = currentUserLocation || startLocation;
+
+    // Get sunset/sunrise data for nighttime warning
+    let sunData = null;
+    let showNighttimeWarning = false;
+
+    if (locationForSunset) {
+        sunData = await getSunriseSunset(locationForSunset.lat, locationForSunset.lng);
+    }
+
     // Calculate other factor scores (0-100)
     const lengthScore = scoreRouteLength(distanceMiles);
-    const timeScore = scoreTimeOfDay();
+    const timeScore = await scoreTimeOfDay(locationForSunset); // Now async with location
     const complexityScore = scoreRouteComplexity(route);
     const roadTypeScore = scoreRoadType(route);
+
+    // Analyze day/night crimes and check if warning should be shown
+    if (usingCrimeData && crimeData && sunData) {
+        const dayNightAnalysis = analyzeDayNightCrimes(crimeData, sunData);
+        const now = new Date();
+        const isNighttime = isAfterSunset(now, sunData.sunset);
+
+        // Show warning if: currently nighttime AND 50%+ crime increase at night
+        if (isNighttime && dayNightAnalysis.nighttimeIncreasePercent >= 50) {
+            showNighttimeWarning = true;
+            console.log(`⚠️ Nighttime warning triggered: ${dayNightAnalysis.nighttimeIncreasePercent.toFixed(0)}% crime increase at night`);
+        }
+    }
 
     let totalScore;
     let breakdown;
@@ -2021,9 +2121,92 @@ async function calculateSafetyScore(route, startLocation, endLocation) {
         breakdown: breakdown,
         usingCrimeData: usingCrimeData,
         inSanFrancisco: inSF,
-        rawCrimeData: crimeData // Store raw crime array for detailed analysis
+        rawCrimeData: crimeData, // Store raw crime array for detailed analysis
+        showNighttimeWarning: showNighttimeWarning // Nighttime warning flag
     };
 }
+
+// ========================================
+// SUNSET/SUNRISE API FUNCTIONS
+// ========================================
+
+// Get cache key for sunset data
+function getSunsetCacheKey(lat, lng) {
+    const roundedLat = lat.toFixed(2);
+    const roundedLng = lng.toFixed(2);
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    return `sunset_${roundedLat}_${roundedLng}_${today}`;
+}
+
+// Fetch sunset/sunrise times for a location
+async function getSunriseSunset(lat, lng) {
+    // Check cache first
+    const cacheKey = getSunsetCacheKey(lat, lng);
+    const cached = SUNSET_API.cache.get(cacheKey);
+
+    if (cached && (Date.now() - cached.timestamp < SUNSET_API.cacheDuration)) {
+        console.log(`📦 Using cached sunset data for ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+        return cached.data;
+    }
+
+    try {
+        const url = `${SUNSET_API.baseUrl}?lat=${lat}&lng=${lng}&date=today&formatted=0`;
+        console.log(`🌅 Fetching sunset/sunrise times for ${lat.toFixed(4)}, ${lng.toFixed(4)}...`);
+
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Sunset API returned ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.status !== 'OK') {
+            throw new Error('Sunset API error');
+        }
+
+        // Parse times (API returns ISO 8601 UTC times)
+        const sunData = {
+            sunrise: new Date(data.results.sunrise),
+            sunset: new Date(data.results.sunset),
+            solarNoon: new Date(data.results.solar_noon)
+        };
+
+        // Cache the results
+        SUNSET_API.cache.set(cacheKey, {
+            data: sunData,
+            timestamp: Date.now()
+        });
+
+        console.log(`✅ Sunset: ${sunData.sunset.toLocaleTimeString()}, Sunrise: ${sunData.sunrise.toLocaleTimeString()}`);
+
+        return sunData;
+
+    } catch (error) {
+        console.error('❌ Error fetching sunset data:', error);
+        return null; // Return null to trigger fallback
+    }
+}
+
+// Check if current time is after sunset
+function isAfterSunset(currentTime, sunset) {
+    return currentTime >= sunset;
+}
+
+// Check if current time is before sunrise
+function isBeforeSunrise(currentTime, sunrise) {
+    return currentTime < sunrise;
+}
+
+// Check if within X hours of sunset (for dusk detection)
+function isNearSunset(currentTime, sunset, hours = 2) {
+    const timeDiff = currentTime - sunset;
+    const hoursDiff = timeDiff / (1000 * 60 * 60); // Convert ms to hours
+    return hoursDiff >= 0 && hoursDiff <= hours;
+}
+
+// ========================================
+// SAFETY SCORING FUNCTIONS
+// ========================================
 
 // Score based on route length (shorter is safer)
 function scoreRouteLength(miles) {
@@ -2034,18 +2217,43 @@ function scoreRouteLength(miles) {
     return 30;
 }
 
-// Score based on time of day (daylight is safer)
-function scoreTimeOfDay() {
-    const hour = new Date().getHours();
+// Score based on time of day (daylight is safer) - UPDATED with dynamic sunset/sunrise
+async function scoreTimeOfDay(location) {
+    const now = new Date();
 
-    // 6am - 8pm: Daylight hours (assumed safe)
-    if (hour >= 6 && hour < 20) return 100;
+    // Try to get dynamic sunset/sunrise times
+    if (location && location.lat && location.lng) {
+        try {
+            const sunData = await getSunriseSunset(location.lat, location.lng);
 
-    // 8pm - 10pm: Dusk
-    if (hour >= 20 && hour < 22) return 70;
+            if (sunData) {
+                // Successfully got sunset data - use dynamic scoring
+                const afterSunset = isAfterSunset(now, sunData.sunset);
+                const beforeSunrise = isBeforeSunrise(now, sunData.sunrise);
+                const nearSunset = isNearSunset(now, sunData.sunset, 2);
 
-    // 10pm - 6am: Night
-    return 40;
+                if ((afterSunset && beforeSunrise) || beforeSunrise) {
+                    // Nighttime (after sunset or before sunrise)
+                    return 40;
+                } else if (nearSunset) {
+                    // Dusk (within 2 hours after sunset)
+                    return 70;
+                } else {
+                    // Daytime
+                    return 100;
+                }
+            }
+        } catch (error) {
+            console.log('⚠️ Sunset API unavailable, using fallback hours');
+        }
+    }
+
+    // FALLBACK: Use hardcoded hours (6am-8pm = day)
+    const hour = now.getHours();
+
+    if (hour >= 6 && hour < 20) return 100;  // 6am - 8pm: Daylight
+    if (hour >= 20 && hour < 22) return 70;  // 8pm - 10pm: Dusk
+    return 40;  // 10pm - 6am: Night
 }
 
 // Score based on route complexity (fewer turns is safer)

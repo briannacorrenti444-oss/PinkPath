@@ -1251,6 +1251,44 @@ body {
     margin-top: 25px;
 }
 
+/* Nighttime Warning Banner */
+.nighttime-warning-banner {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffe5a3 100%);
+    border: 2px solid #ff8c00;
+    border-radius: var(--radius-md);
+    padding: 20px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    box-shadow: 0 4px 12px rgba(255, 140, 0, 0.15);
+}
+
+.nighttime-warning-banner .warning-icon {
+    font-size: 32px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.nighttime-warning-banner .warning-content {
+    flex: 1;
+}
+
+.nighttime-warning-banner h3 {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #cc7000;
+    letter-spacing: 0.5px;
+}
+
+.nighttime-warning-banner p {
+    margin: 0;
+    font-size: 14px;
+    color: #664d00;
+    line-height: 1.5;
+}
+
 /* ============================================
    ACTIVE NAVIGATION SCREEN
    ============================================ */
