@@ -20,6 +20,7 @@ let routingControl = null;
 let currentRoute = null;
 let startMarker = null;
 let destinationMarker = null;
+let crimeMarkerClusterGroup = null; // Crime markers on route map
 
 // Tile layers for light/dark mode
 let lightTileLayer = null;
@@ -1111,6 +1112,23 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
         // Update UI with real data
         updateRouteDisplay();
         updateSafetyDisplay();
+
+        // Add crime markers to map (last 7 days, violent/theft only)
+        if (currentRouteData.rawCrimeData && currentRouteData.rawCrimeData.length > 0) {
+            // Remove existing crime markers if any
+            if (crimeMarkerClusterGroup && map) {
+                map.removeLayer(crimeMarkerClusterGroup);
+            }
+
+            // Filter to recent violent crimes
+            const recentCrimes = filterRecentViolentCrimes(currentRouteData.rawCrimeData);
+
+            if (recentCrimes.length > 0) {
+                crimeMarkerClusterGroup = addCrimeMarkersToMap(map, recentCrimes, route);
+            } else {
+                console.log('ℹ️ No recent violent/theft crimes in last 7 days');
+            }
+        }
     });
 
     // Listen for routing errors
@@ -1992,6 +2010,135 @@ function analyzeDayNightCrimes(crimes, sunData) {
         nighttimeCrimes,
         nighttimeIncreasePercent
     };
+}
+
+// Filter crimes to last 7 days and violent/theft categories only
+function filterRecentViolentCrimes(crimes) {
+    if (!crimes || crimes.length === 0) return [];
+
+    const now = new Date();
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(now.getDate() - 7);
+
+    // Violent crime categories (red markers)
+    const violentCategories = [
+        'Homicide',
+        'Robbery',
+        'Assault',
+        'Sex Offense',
+        'Human Trafficking',
+        'Weapon Offense'
+    ];
+
+    // Theft crime categories (orange markers)
+    const theftCategories = [
+        'Burglary',
+        'Motor Vehicle Theft',
+        'Larceny Theft'
+    ];
+
+    const targetCategories = [...violentCategories, ...theftCategories];
+
+    return crimes.filter(crime => {
+        // Check date (last 7 days)
+        const crimeDate = new Date(crime.incident_datetime);
+        if (crimeDate < sevenDaysAgo) return false;
+
+        // Check category (violent or theft)
+        return targetCategories.includes(crime.incident_category);
+    }).map(crime => ({
+        ...crime,
+        isViolent: violentCategories.includes(crime.incident_category)
+    }));
+}
+
+// Add crime markers to map with clustering
+function addCrimeMarkersToMap(map, crimes, route) {
+    if (!map || !crimes || crimes.length === 0) {
+        console.log('ℹ️ No recent violent crimes to display');
+        return null;
+    }
+
+    console.log(`🔴 Adding ${crimes.length} recent crime markers to map...`);
+
+    // Create marker cluster group
+    const crimeClusterGroup = L.markerClusterGroup({
+        maxClusterRadius: 50,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        iconCreateFunction: function(cluster) {
+            const count = cluster.getChildCount();
+            let size = 'small';
+            if (count > 10) size = 'large';
+            else if (count > 5) size = 'medium';
+
+            return L.divIcon({
+                html: `<div><span>${count}</span></div>`,
+                className: `crime-marker-cluster crime-marker-cluster-${size}`,
+                iconSize: L.point(40, 40)
+            });
+        }
+    });
+
+    // Get route coordinates for distance calculation
+    const routeCoords = route.coordinates || [];
+
+    crimes.forEach(crime => {
+        const lat = parseFloat(crime.latitude);
+        const lng = parseFloat(crime.longitude);
+
+        if (!lat || !lng) return;
+
+        // Calculate distance from route (find closest point)
+        let minDistance = Infinity;
+        routeCoords.forEach(coord => {
+            const dist = calculateDistance(lat, lng, coord.lat, coord.lng);
+            if (dist < minDistance) minDistance = dist;
+        });
+
+        // Create crime marker
+        const isViolent = crime.isViolent;
+        const markerColor = isViolent ? '#dc143c' : '#ed8936'; // Red for violent, orange for theft
+
+        const crimeIcon = L.divIcon({
+            className: 'crime-marker',
+            html: `<div style="background-color: ${markerColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
+        });
+
+        const marker = L.marker([lat, lng], { icon: crimeIcon });
+
+        // Create popup content
+        const crimeDate = new Date(crime.incident_datetime);
+        const dateStr = crimeDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+
+        const distanceStr = minDistance < 0.1
+            ? `${Math.round(minDistance * 5280)} ft from route`
+            : `${minDistance.toFixed(2)} mi from route`;
+
+        const popupContent = `
+            <div style="min-width: 150px;">
+                <strong style="color: ${markerColor};">${crime.incident_category}</strong><br>
+                <span style="font-size: 12px; color: #666;">${dateStr}</span><br>
+                <span style="font-size: 11px; color: #999;">${distanceStr}</span>
+            </div>
+        `;
+
+        marker.bindPopup(popupContent);
+        crimeClusterGroup.addLayer(marker);
+    });
+
+    map.addLayer(crimeClusterGroup);
+    console.log(`✅ Added ${crimes.length} crime markers with clustering`);
+
+    return crimeClusterGroup;
 }
 
 // ========================================

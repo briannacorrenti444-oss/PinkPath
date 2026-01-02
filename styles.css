@@ -1471,6 +1471,74 @@ body {
     }
 }
 
+/* Crime Marker Clusters */
+.crime-marker-cluster {
+    background-color: rgba(220, 20, 60, 0.6);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.crime-marker-cluster div {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background-color: rgba(220, 20, 60, 0.8);
+}
+
+.crime-marker-cluster span {
+    color: white;
+    font-weight: 700;
+    font-size: 12px;
+    text-align: center;
+}
+
+.crime-marker-cluster-small {
+    width: 30px;
+    height: 30px;
+}
+
+.crime-marker-cluster-small div {
+    width: 24px;
+    height: 24px;
+}
+
+.crime-marker-cluster-medium {
+    width: 40px;
+    height: 40px;
+}
+
+.crime-marker-cluster-medium div {
+    width: 34px;
+    height: 34px;
+}
+
+.crime-marker-cluster-medium span {
+    font-size: 14px;
+}
+
+.crime-marker-cluster-large {
+    width: 50px;
+    height: 50px;
+}
+
+.crime-marker-cluster-large div {
+    width: 44px;
+    height: 44px;
+}
+
+.crime-marker-cluster-large span {
+    font-size: 16px;
+}
+
+.crime-marker {
+    z-index: 500 !important;
+}
+
 .nav-overlay {
     padding: 20px 0 40px;
 }
