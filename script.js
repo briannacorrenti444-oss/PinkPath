@@ -916,12 +916,13 @@ function displayRouteOnNavigationMap() {
 
     // Listen for route found
     routingControl.on('routesfound', function(e) {
-        const route = e.routes[0];
+        // DON'T overwrite currentRoute - use the already-selected route from preview!
+        // currentRoute was already set when user selected Route 1 or Route 2
+        // e.routes[0] would always give us the first route, ignoring user's selection
 
-        // Store route data for navigation
-        currentRoute = route;
-        routeSteps = route.instructions || [];
-        routeCoordinates = route.coordinates || [];
+        // Extract navigation data from the already-selected route
+        routeSteps = currentRoute.instructions || [];
+        routeCoordinates = currentRoute.coordinates || [];
 
         console.log('✅ Route displayed on navigation map');
         console.log(`📋 ${routeSteps.length} navigation steps ready`);
@@ -937,7 +938,7 @@ function displayRouteOnNavigationMap() {
             const recentCrimes = filterRecentViolentCrimes(currentRouteData.rawCrimeData);
 
             if (recentCrimes.length > 0) {
-                navCrimeMarkerClusterGroup = addCrimeMarkersToMap(navigationMap, recentCrimes, route);
+                navCrimeMarkerClusterGroup = addCrimeMarkersToMap(navigationMap, recentCrimes, currentRoute);
             }
         }
 
@@ -948,8 +949,8 @@ function displayRouteOnNavigationMap() {
                 navigationMap.removeLayer(navOmbreRouteLayer);
             }
 
-            // Draw the ombre route
-            navOmbreRouteLayer = drawOmbreRoute(navigationMap, route.coordinates, currentRouteData.crimeSamples);
+            // Draw the ombre route using selected route's coordinates
+            navOmbreRouteLayer = drawOmbreRoute(navigationMap, currentRoute.coordinates, currentRouteData.crimeSamples);
 
             // Hide the default routing control line (pink line)
             if (routingControl) {
