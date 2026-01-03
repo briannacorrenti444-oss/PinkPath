@@ -1223,26 +1223,36 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
             map.removeLayer(alternativeOmbreLayer);
         }
 
-        // Draw each route
-        routeOptions.forEach((routeOption, idx) => {
-            if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
-                const isSelected = (idx === selectedRouteIndex);
+        // Draw routes in correct order: selected first (bottom), then alternative (top)
+        // This ensures the alternative route (dashed/faded) is visible on top
 
-                // Draw ombre route with different styles
+        // First pass: Draw the selected route
+        routeOptions.forEach((routeOption, idx) => {
+            const isSelected = (idx === selectedRouteIndex);
+            if (isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
                 const ombreLayer = drawOmbreRoute(
                     map,
                     routeOption.route.coordinates,
                     routeOption.crimeSamples,
-                    isSelected ? 0.8 : 0.4,  // opacity: selected=0.8, alternative=0.4
-                    isSelected ? null : '10, 10'  // dashArray: selected=solid, alternative=dashed
+                    0.8,  // opacity: selected
+                    null  // dashArray: solid
                 );
+                ombreRouteLayer = ombreLayer;
+            }
+        });
 
-                // Store layer references
-                if (isSelected) {
-                    ombreRouteLayer = ombreLayer;
-                } else {
-                    alternativeOmbreLayer = ombreLayer;
-                }
+        // Second pass: Draw the alternative route (on top)
+        routeOptions.forEach((routeOption, idx) => {
+            const isSelected = (idx === selectedRouteIndex);
+            if (!isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+                const ombreLayer = drawOmbreRoute(
+                    map,
+                    routeOption.route.coordinates,
+                    routeOption.crimeSamples,
+                    0.4,  // opacity: alternative
+                    '10, 10'  // dashArray: dashed
+                );
+                alternativeOmbreLayer = ombreLayer;
             }
         });
 
@@ -1359,13 +1369,19 @@ function selectRoute(newIndex) {
     }
 
     console.log(`🎨 Redrawing ${routeOptions.length} routes with new styling...`);
-    routeOptions.forEach((routeOption, idx) => {
-        if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
-            const isSelected = (idx === selectedRouteIndex);
-            const opacity = isSelected ? 0.8 : 0.4;
-            const dashArray = isSelected ? null : '10, 10';
 
-            console.log(`  - Route ${idx + 1}: ${isSelected ? 'SELECTED' : 'alternative'} (opacity: ${opacity}, dashArray: ${dashArray})`);
+    // IMPORTANT: Draw in reverse order so alternative route appears on top
+    // 1. Draw SELECTED route first (bottom layer)
+    // 2. Draw ALTERNATIVE route second (top layer - dashed/faded will be visible)
+
+    // First pass: Draw the selected route
+    routeOptions.forEach((routeOption, idx) => {
+        const isSelected = (idx === selectedRouteIndex);
+        if (isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+            const opacity = 0.8;
+            const dashArray = null;
+
+            console.log(`  - Route ${idx + 1}: SELECTED (opacity: ${opacity}, dashArray: ${dashArray}) [BOTTOM LAYER]`);
 
             const ombreLayer = drawOmbreRoute(
                 routeMap,
@@ -1375,13 +1391,30 @@ function selectRoute(newIndex) {
                 dashArray
             );
 
-            if (isSelected) {
-                ombreRouteLayer = ombreLayer;
-                console.log('    ✓ Stored as ombreRouteLayer (selected)');
-            } else {
-                alternativeOmbreLayer = ombreLayer;
-                console.log('    ✓ Stored as alternativeOmbreLayer (alternative)');
-            }
+            ombreRouteLayer = ombreLayer;
+            console.log('    ✓ Stored as ombreRouteLayer (selected)');
+        }
+    });
+
+    // Second pass: Draw the alternative route (on top)
+    routeOptions.forEach((routeOption, idx) => {
+        const isSelected = (idx === selectedRouteIndex);
+        if (!isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+            const opacity = 0.4;
+            const dashArray = '10, 10';
+
+            console.log(`  - Route ${idx + 1}: alternative (opacity: ${opacity}, dashArray: ${dashArray}) [TOP LAYER]`);
+
+            const ombreLayer = drawOmbreRoute(
+                routeMap,
+                routeOption.route.coordinates,
+                routeOption.crimeSamples,
+                opacity,
+                dashArray
+            );
+
+            alternativeOmbreLayer = ombreLayer;
+            console.log('    ✓ Stored as alternativeOmbreLayer (alternative)');
         }
     });
     console.log('✅ Route redraw complete');
