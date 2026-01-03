@@ -24,6 +24,7 @@ let crimeMarkerClusterGroup = null; // Crime markers on route map
 let navCrimeMarkerClusterGroup = null; // Crime markers on navigation map
 let ombreRouteLayer = null; // Ombre-colored route on route map
 let navOmbreRouteLayer = null; // Ombre-colored route on navigation map
+let navAlternativeOmbreLayer = null; // Alternative ombre route on navigation map
 
 // Tile layers for light/dark mode
 let lightTileLayer = null;
@@ -898,10 +899,8 @@ function displayRouteOnNavigationMap() {
             profile: 'foot'
         }),
         lineOptions: {
-            styles: [
-                { color: routeColor, opacity: routeOpacity, weight: 6 }
-            ],
-            extendToWaypoints: true,
+            styles: [],  // Empty array = no lines drawn (we draw ombre routes instead)
+            extendToWaypoints: false,
             missingRouteTolerance: 0
         },
         createMarker: function() {
@@ -942,24 +941,45 @@ function displayRouteOnNavigationMap() {
             }
         }
 
-        // Draw ombre-colored route on navigation map
-        if (currentRouteData.crimeSamples && currentRouteData.crimeSamples.length > 0) {
-            // Remove existing ombre route if any
-            if (navOmbreRouteLayer && navigationMap) {
-                navigationMap.removeLayer(navOmbreRouteLayer);
-            }
-
-            // Draw the ombre route using selected route's coordinates
-            navOmbreRouteLayer = drawOmbreRoute(navigationMap, currentRoute.coordinates, currentRouteData.crimeSamples);
-
-            // Hide the default routing control line (pink line)
-            if (routingControl) {
-                const routePaths = navigationMap.getPane('overlayPane').querySelectorAll('.leaflet-routing-container path');
-                routePaths.forEach(path => {
-                    path.style.opacity = '0'; // Hide default route line
-                });
-            }
+        // Draw ALL routes on navigation map with visual distinction
+        // Remove existing ombre routes
+        if (navOmbreRouteLayer && navigationMap) {
+            navigationMap.removeLayer(navOmbreRouteLayer);
         }
+        if (navAlternativeOmbreLayer && navigationMap) {
+            navigationMap.removeLayer(navAlternativeOmbreLayer);
+        }
+
+        // Draw routes in correct order: selected first (bottom), then alternative (top)
+        // First pass: Draw the selected route
+        routeOptions.forEach((routeOption, idx) => {
+            const isSelected = (idx === selectedRouteIndex);
+            if (isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+                navOmbreRouteLayer = drawOmbreRoute(
+                    navigationMap,
+                    routeOption.route.coordinates,
+                    routeOption.crimeSamples,
+                    0.8,  // opacity: selected
+                    null  // dashArray: solid
+                );
+            }
+        });
+
+        // Second pass: Draw the alternative route (on top)
+        routeOptions.forEach((routeOption, idx) => {
+            const isSelected = (idx === selectedRouteIndex);
+            if (!isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+                navAlternativeOmbreLayer = drawOmbreRoute(
+                    navigationMap,
+                    routeOption.route.coordinates,
+                    routeOption.crimeSamples,
+                    0.4,  // opacity: alternative
+                    '10, 10'  // dashArray: dashed
+                );
+            }
+        });
+
+        // No need to hide routing control lines - we disabled them with styles: []
 
         // Ensure map is properly sized after route is added
         setTimeout(() => {
