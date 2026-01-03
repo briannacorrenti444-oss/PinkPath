@@ -2680,9 +2680,9 @@ function getSunsetCacheKey(lat, lng) {
 async function getSunriseSunset(lat, lng) {
     // Check cache first
     const cacheKey = getSunsetCacheKey(lat, lng);
-    const cached = SUNSET_API.cache.get(cacheKey);
+    const cached = sunsetCache.get(cacheKey);
 
-    if (cached && (Date.now() - cached.timestamp < SUNSET_API.cacheDuration)) {
+    if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
         console.log(`📦 Using cached sunset data for ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
         return cached.data;
     }
@@ -2710,7 +2710,7 @@ async function getSunriseSunset(lat, lng) {
         };
 
         // Cache the results
-        SUNSET_API.cache.set(cacheKey, {
+        sunsetCache.set(cacheKey, {
             data: sunData,
             timestamp: Date.now()
         });
