@@ -1,8 +1,29 @@
 // ========================================
 // PINKPATH - MODERN RESPONSIVE WEB APP
-// Complete JavaScript Functionality
+// Main Application Script
 // OpenStreetMap + Leaflet Implementation
 // ========================================
+
+// Import configuration and utilities
+import {
+    defaultLocation,
+    CRIME_API,
+    CACHE_DURATION,
+    SUNSET_API,
+    SF_BOUNDS,
+    CRIME_WEIGHTS,
+    pinkIcon
+} from './modules/config.js';
+
+import {
+    calculateDistance,
+    toRadians,
+    createBoundingBox,
+    metersToMiles,
+    secondsToMinutes,
+    formatDistance,
+    formatDuration
+} from './modules/utils.js';
 
 console.log("PinkPath loaded successfully! 🛡️");
 console.log("=====================================");
@@ -69,80 +90,11 @@ let navigationMarker = null;
 let isRecalculating = false;
 let isPreviewMode = false; // Preview mode (far from start) vs Live mode (at start with GPS)
 
-// Default location (New York City - will be replaced with user's location)
-const defaultLocation = { lat: 40.7128, lng: -74.0060 };
-
-// ========================================
-// CRIME DATA API CONFIGURATION (PHASE 2B)
-// ========================================
-
-// San Francisco Open Data - Crime API
-const CRIME_API = {
-    baseUrl: 'https://data.sfgov.org/resource/wg3w-h783.json',
-    appToken: 'HAsCpzT6ovtq42o9dY9OHqtmD',
-    radiusMeters: 500, // ~0.3 miles radius for crime queries
-    daysBack: 90, // Look back 90 days for recent crime trends
-    sampleInterval: 0.15 // Query crimes every 0.15 miles along route (optimized from 0.1)
-};
-
 // Crime cache (24-hour cache to reduce API calls)
 const crimeCache = new Map();
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
-// Sunrise-Sunset API Configuration
-const SUNSET_API = {
-    baseUrl: 'https://api.sunrise-sunset.org/json',
-    cache: new Map(), // Cache sunset/sunrise data
-    cacheDuration: CACHE_DURATION
-};
-
-// San Francisco bounding box (to detect if route is in SF)
-const SF_BOUNDS = {
-    north: 37.8324,
-    south: 37.7039,
-    east: -122.3482,
-    west: -122.5155
-};
-
-// Crime severity weights for scoring
-const CRIME_WEIGHTS = {
-    // High severity (violent crimes)
-    'Homicide': 5.0,
-    'Robbery': 3.0,
-    'Assault': 3.0,
-    'Sex Offense': 4.0,
-    'Human Trafficking': 4.0,
-
-    // Medium severity (property crimes)
-    'Burglary': 2.0,
-    'Motor Vehicle Theft': 2.0,
-    'Arson': 2.5,
-    'Weapon Offense': 2.5,
-
-    // Low severity (common crimes)
-    'Larceny Theft': 1.0,
-    'Vandalism': 1.0,
-    'Drug Offense': 1.0,
-    'Fraud': 0.8,
-
-    // Excluded categories (return 0)
-    'Traffic Violation': 0,
-    'Non-Criminal': 0,
-    'Lost Property': 0,
-    'Miscellaneous': 0
-};
-
-// Pink marker icon
-const pinkIcon = L.icon({
-    iconUrl: 'data:image/svg+xml;base64,' + btoa(`
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
-            <path fill="#ff1493" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-        </svg>
-    `),
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-});
+// Sunrise-Sunset API cache
+const sunsetCache = new Map();
 
 // ========================================
 // SCREEN NAVIGATION
@@ -1507,98 +1459,9 @@ function updateRouteInfo(routeData) {
 }
 
 // ========================================
-// GEOGRAPHIC UTILITIES
+// GEOGRAPHIC UTILITIES & FORMATTING
+// Note: Core utilities imported from utils.js
 // ========================================
-
-// Calculate distance between two points using Haversine formula
-// Returns distance in miles
-function calculateDistance(lat1, lng1, lat2, lng2) {
-    const R = 3959; // Earth's radius in miles
-    const dLat = toRadians(lat2 - lat1);
-    const dLng = toRadians(lng2 - lng1);
-
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
-              Math.sin(dLng / 2) * Math.sin(dLng / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
-
-    return distance;
-}
-
-// Convert degrees to radians
-function toRadians(degrees) {
-    return degrees * (Math.PI / 180);
-}
-
-// Create a bounding box around a point
-// radius is in kilometers
-function createBoundingBox(lat, lng, radiusKm = 50) {
-    // Earth's radius in km
-    const R = 6371;
-
-    // Convert radius to degrees
-    const latDelta = (radiusKm / R) * (180 / Math.PI);
-    const lngDelta = (radiusKm / R) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180);
-
-    return {
-        left: lng - lngDelta,
-        bottom: lat - latDelta,
-        right: lng + lngDelta,
-        top: lat + latDelta
-    };
-}
-
-// ========================================
-// UNIT CONVERSION & FORMATTING
-// ========================================
-
-// Convert meters to miles
-function metersToMiles(meters) {
-    return meters / 1609.34;
-}
-
-// Convert seconds to minutes
-function secondsToMinutes(seconds) {
-    return seconds / 60;
-}
-
-// Format distance for display
-function formatDistance(miles) {
-    if (miles < 0.1) {
-        // Less than 0.1 miles, show in feet
-        const feet = Math.round(miles * 5280);
-        return `${feet} ft`;
-    } else if (miles < 10) {
-        // Less than 10 miles, show one decimal
-        return `${miles.toFixed(1)} mi`;
-    } else {
-        // 10+ miles, show whole number
-        return `${Math.round(miles)} mi`;
-    }
-}
-
-// Format duration for display
-function formatDuration(minutes) {
-    if (minutes < 1) {
-        // Less than a minute, show seconds
-        const seconds = Math.round(minutes * 60);
-        return `${seconds} sec`;
-    } else if (minutes < 60) {
-        // Less than an hour, show minutes
-        return `${Math.round(minutes)} min`;
-    } else {
-        // 1+ hours, show hours and minutes
-        const hours = Math.floor(minutes / 60);
-        const mins = Math.round(minutes % 60);
-        if (mins === 0) {
-            return `${hours} hr`;
-        } else {
-            return `${hours} hr ${mins} min`;
-        }
-    }
-}
 
 // Update route display with real data
 function updateRouteDisplay() {
