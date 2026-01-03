@@ -1252,6 +1252,105 @@ body {
     margin-top: 25px;
 }
 
+/* Route Comparison Cards (Phase 2D) */
+.route-comparison-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 25px;
+    margin-bottom: 20px;
+}
+
+.route-card {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: var(--radius-md);
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.route-card:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 12px rgba(229, 62, 132, 0.15);
+}
+
+.route-card.selected {
+    border-color: var(--primary-color);
+    background: linear-gradient(135deg, #fff 0%, #fff5f8 100%);
+    box-shadow: 0 6px 16px rgba(229, 62, 132, 0.2);
+}
+
+.route-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.route-card-header h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0;
+}
+
+.safety-badge {
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.route-card-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 15px;
+}
+
+.route-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.route-stat-label {
+    font-size: 13px;
+    color: #666;
+    font-weight: 500;
+}
+
+.route-stat-value {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.select-route-btn {
+    width: 100%;
+    padding: 12px 20px;
+    background: white;
+    border: 2px solid var(--primary-color);
+    color: var(--primary-color);
+    border-radius: var(--radius-md);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.select-route-btn:hover {
+    background: var(--primary-color);
+    color: white;
+}
+
+.select-route-btn.selected {
+    background: var(--primary-color);
+    color: white;
+    cursor: default;
+}
+
 /* Nighttime Warning Banner */
 .nighttime-warning-banner {
     background: linear-gradient(135deg, #fff3cd 0%, #ffe5a3 100%);

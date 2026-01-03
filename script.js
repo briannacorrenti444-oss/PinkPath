@@ -51,6 +51,11 @@ let currentRouteData = {
     rawCrimeData: null      // Store raw crime array for detailed analysis
 };
 
+// Alternative routes (for route comparison feature)
+let routeOptions = [];     // Array of route data objects
+let selectedRouteIndex = 0; // Index of currently selected route
+let alternativeOmbreLayer = null; // Ombre layer for alternative route
+
 // Navigation state (Phase 3)
 let isNavigating = false;
 let navigationWatchId = null;
@@ -1071,7 +1076,8 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
         ],
         router: L.Routing.osrmv1({
             serviceUrl: 'https://router.project-osrm.org/route/v1',
-            profile: 'foot' // Walking mode
+            profile: 'foot', // Walking mode
+            alternatives: true // Request alternative routes
         }),
         lineOptions: {
             styles: [
@@ -1090,105 +1096,167 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
         addWaypoints: false,
         routeWhileDragging: false,
         fitSelectedRoutes: true,
-        showAlternatives: false
+        showAlternatives: false // We handle alternatives manually for better control
     }).addTo(map);
 
     // Listen for route found
     routingControl.on('routesfound', async function(e) {
         const routes = e.routes;
-        const route = routes[0];
+        console.log(`🗺️ Found ${routes.length} route(s)`);
 
-        // Extract distance and time from OSRM
-        const distanceMeters = route.summary.totalDistance;
-        const timeSeconds = route.summary.totalTime;
+        // Clear previous route options
+        routeOptions = [];
 
-        // Convert to imperial units
-        const distanceMiles = metersToMiles(distanceMeters);
+        // Process all routes in parallel
+        const routePromises = routes.map(async (route, index) => {
+            // Extract distance and time from OSRM
+            const distanceMeters = route.summary.totalDistance;
+            const timeSeconds = route.summary.totalTime;
 
-        // MVP WORKAROUND: Calculate walking time manually due to OSRM demo server unreliability
-        // OSRM demo server returns inconsistent/incorrect walking times despite profile: 'foot'
-        // This manual calculation ensures accurate, consistent durations on both screens
-        // TODO: Remove this override when migrating to Google Maps API in production
-        const durationMinutes = (distanceMiles / 3.5) * 60; // 3.5 mph average walking speed
+            // Convert to imperial units
+            const distanceMiles = metersToMiles(distanceMeters);
 
-        // Format for display
-        const distanceText = formatDistance(distanceMiles);
-        const durationText = formatDuration(durationMinutes);
+            // MVP WORKAROUND: Calculate walking time manually
+            const durationMinutes = (distanceMiles / 3.5) * 60;
 
-        // Calculate safety score (ASYNC for Phase 2B)
-        const safetyData = await calculateSafetyScore(route, start, end);
+            // Format for display
+            const distanceText = formatDistance(distanceMiles);
+            const durationText = formatDuration(durationMinutes);
 
-        // Store route data
-        currentRouteData = {
-            distance: distanceMiles,
-            duration: durationMinutes,
-            distanceText: distanceText,
-            durationText: durationText,
-            safetyScore: safetyData.score,
-            safetyLabel: safetyData.label,
-            safetyColor: safetyData.color,
-            safetyBreakdown: safetyData.breakdown,
-            usingCrimeData: safetyData.usingCrimeData,
-            inSanFrancisco: safetyData.inSanFrancisco,
-            crimeCount: safetyData.breakdown.crimeData?.count || 0,
-            rawCrimeData: safetyData.rawCrimeData, // Store raw crime array for modal
-            crimeSamples: safetyData.crimeSamples, // Store crime samples for ombre route
-            showNighttimeWarning: safetyData.showNighttimeWarning // Nighttime warning flag
-        };
+            // Calculate safety score (ASYNC for Phase 2B)
+            const safetyData = await calculateSafetyScore(route, start, end);
 
-        console.log('✅ Route calculated successfully!');
-        console.log(`📏 Distance: ${distanceText}`);
-        console.log(`⏱️ Duration: ${durationText}`);
-        console.log(`🛡️ Safety Score: ${safetyData.score}/10 (${safetyData.label})`);
-        if (safetyData.usingCrimeData) {
-            console.log(`🚨 Crime Data: ${currentRouteData.crimeCount} incidents (last 90 days)`);
+            return {
+                route: route,
+                index: index,
+                distance: distanceMiles,
+                duration: durationMinutes,
+                distanceText: distanceText,
+                durationText: durationText,
+                safetyScore: safetyData.score,
+                safetyLabel: safetyData.label,
+                safetyColor: safetyData.color,
+                safetyBreakdown: safetyData.breakdown,
+                usingCrimeData: safetyData.usingCrimeData,
+                inSanFrancisco: safetyData.inSanFrancisco,
+                crimeCount: safetyData.breakdown.crimeData?.count || 0,
+                rawCrimeData: safetyData.rawCrimeData,
+                crimeSamples: safetyData.crimeSamples,
+                showNighttimeWarning: safetyData.showNighttimeWarning
+            };
+        });
+
+        // Wait for all routes to be processed
+        routeOptions = await Promise.all(routePromises);
+
+        // Auto-select the safer route (higher safety score)
+        selectedRouteIndex = 0;
+        if (routeOptions.length > 1) {
+            // Find route with highest safety score
+            const safestIndex = routeOptions.reduce((maxIdx, route, idx, arr) =>
+                route.safetyScore > arr[maxIdx].safetyScore ? idx : maxIdx, 0
+            );
+            selectedRouteIndex = safestIndex;
+            console.log(`🎯 Auto-selected Route ${safestIndex + 1} (safer option)`);
         }
 
-        // Store current route
-        currentRoute = route;
+        // Set current route data to selected route
+        const selectedRoute = routeOptions[selectedRouteIndex];
+
+        // Store route data from selected route
+        currentRouteData = {
+            distance: selectedRoute.distance,
+            duration: selectedRoute.duration,
+            distanceText: selectedRoute.distanceText,
+            durationText: selectedRoute.durationText,
+            safetyScore: selectedRoute.safetyScore,
+            safetyLabel: selectedRoute.safetyLabel,
+            safetyColor: selectedRoute.safetyColor,
+            safetyBreakdown: selectedRoute.safetyBreakdown,
+            usingCrimeData: selectedRoute.usingCrimeData,
+            inSanFrancisco: selectedRoute.inSanFrancisco,
+            crimeCount: selectedRoute.crimeCount,
+            rawCrimeData: selectedRoute.rawCrimeData,
+            crimeSamples: selectedRoute.crimeSamples,
+            showNighttimeWarning: selectedRoute.showNighttimeWarning
+        };
+
+        console.log('✅ Route(s) calculated successfully!');
+        console.log(`📏 Distance: ${selectedRoute.distanceText}`);
+        console.log(`⏱️ Duration: ${selectedRoute.durationText}`);
+        console.log(`🛡️ Safety Score: ${selectedRoute.safetyScore}/10 (${selectedRoute.safetyLabel})`);
+        if (selectedRoute.usingCrimeData) {
+            console.log(`🚨 Crime Data: ${selectedRoute.crimeCount} incidents (last 90 days)`);
+        }
+
+        // Store current route (selected route)
+        currentRoute = selectedRoute.route;
 
         // Update UI with real data
         updateRouteDisplay();
         updateSafetyDisplay();
 
-        // Add crime markers to map (last 7 days, violent/theft only)
-        if (currentRouteData.rawCrimeData && currentRouteData.rawCrimeData.length > 0) {
+        // Add crime markers to map for SELECTED route only
+        if (selectedRoute.rawCrimeData && selectedRoute.rawCrimeData.length > 0) {
             // Remove existing crime markers if any
             if (crimeMarkerClusterGroup && map) {
                 map.removeLayer(crimeMarkerClusterGroup);
             }
 
             // Filter to recent violent crimes
-            const recentCrimes = filterRecentViolentCrimes(currentRouteData.rawCrimeData);
+            const recentCrimes = filterRecentViolentCrimes(selectedRoute.rawCrimeData);
 
             if (recentCrimes.length > 0) {
-                crimeMarkerClusterGroup = addCrimeMarkersToMap(map, recentCrimes, route);
+                crimeMarkerClusterGroup = addCrimeMarkersToMap(map, recentCrimes, selectedRoute.route);
             } else {
                 console.log('ℹ️ No recent violent/theft crimes in last 7 days');
             }
         }
 
-        // Draw ombre-colored route based on crime density
-        if (currentRouteData.crimeSamples && currentRouteData.crimeSamples.length > 0) {
-            // Remove existing ombre route if any
-            if (ombreRouteLayer && map) {
-                map.removeLayer(ombreRouteLayer);
-            }
+        // Draw ALL routes with ombre coloring
+        // Remove existing ombre routes
+        if (ombreRouteLayer && map) {
+            map.removeLayer(ombreRouteLayer);
+        }
+        if (alternativeOmbreLayer && map) {
+            map.removeLayer(alternativeOmbreLayer);
+        }
 
-            // Draw the ombre route
-            ombreRouteLayer = drawOmbreRoute(map, route.coordinates, currentRouteData.crimeSamples);
+        // Draw each route
+        routeOptions.forEach((routeOption, idx) => {
+            if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+                const isSelected = (idx === selectedRouteIndex);
 
-            // Hide the default routing control line (pink line)
-            if (routingControl) {
-                const routingContainer = routingControl.getContainer();
-                if (routingContainer) {
-                    const routePaths = map.getPane('overlayPane').querySelectorAll('.leaflet-routing-container path');
-                    routePaths.forEach(path => {
-                        path.style.opacity = '0'; // Hide default route line
-                    });
+                // Draw ombre route with different styles
+                const ombreLayer = drawOmbreRoute(
+                    map,
+                    routeOption.route.coordinates,
+                    routeOption.crimeSamples,
+                    isSelected ? 0.8 : 0.4,  // opacity: selected=0.8, alternative=0.4
+                    isSelected ? null : '10, 10'  // dashArray: selected=solid, alternative=dashed
+                );
+
+                // Store layer references
+                if (isSelected) {
+                    ombreRouteLayer = ombreLayer;
+                } else {
+                    alternativeOmbreLayer = ombreLayer;
                 }
             }
+        });
+
+        // Hide the default routing control lines (Leaflet's pink lines)
+        if (routingControl) {
+            setTimeout(() => {
+                const routePaths = map.getPane('overlayPane').querySelectorAll('.leaflet-routing-container path');
+                routePaths.forEach(path => {
+                    path.style.opacity = '0';
+                });
+            }, 100);
         }
+
+        // Update route comparison UI
+        updateRouteComparisonUI();
     });
 
     // Listen for routing errors
@@ -1196,6 +1264,182 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
         console.error('❌ Routing error:', e.error);
         alert('⚠️ Could not calculate route. Please try different addresses.');
     });
+}
+
+// ========================================
+// ROUTE COMPARISON UI
+// ========================================
+
+function updateRouteComparisonUI() {
+    const comparisonContainer = document.getElementById('route-comparison-container');
+
+    if (!comparisonContainer) {
+        console.warn('⚠️ Route comparison container not found');
+        return;
+    }
+
+    // Clear existing cards
+    comparisonContainer.innerHTML = '';
+
+    // Show comparison container
+    comparisonContainer.style.display = 'flex';
+
+    // Create card for each route option
+    routeOptions.forEach((routeOption, index) => {
+        const isSelected = (index === selectedRouteIndex);
+
+        const card = document.createElement('div');
+        card.className = `route-card ${isSelected ? 'selected' : ''}`;
+        card.dataset.routeIndex = index;
+
+        card.innerHTML = `
+            <div class="route-card-header">
+                <h3>Route ${index + 1} ${isSelected ? '(Selected)' : ''}</h3>
+                <div class="safety-badge" style="background-color: ${routeOption.safetyColor}20; color: ${routeOption.safetyColor};">
+                    ${routeOption.safetyLabel}
+                </div>
+            </div>
+            <div class="route-card-body">
+                <div class="route-stat">
+                    <span class="route-stat-label">Distance:</span>
+                    <span class="route-stat-value">${routeOption.distanceText}</span>
+                </div>
+                <div class="route-stat">
+                    <span class="route-stat-label">Duration:</span>
+                    <span class="route-stat-value">${routeOption.durationText}</span>
+                </div>
+                <div class="route-stat">
+                    <span class="route-stat-label">Safety Score:</span>
+                    <span class="route-stat-value">${routeOption.safetyScore}/100</span>
+                </div>
+                <div class="route-stat">
+                    <span class="route-stat-label">Crime Count:</span>
+                    <span class="route-stat-value">${routeOption.crimeCount}</span>
+                </div>
+            </div>
+            <button class="select-route-btn ${isSelected ? 'selected' : ''}" data-route-index="${index}">
+                ${isSelected ? 'Selected' : 'Select Route'}
+            </button>
+        `;
+
+        comparisonContainer.appendChild(card);
+    });
+
+    // Add click handlers to select buttons
+    const selectButtons = comparisonContainer.querySelectorAll('.select-route-btn');
+    selectButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const newIndex = parseInt(this.dataset.routeIndex);
+            selectRoute(newIndex);
+        });
+    });
+}
+
+function selectRoute(newIndex) {
+    if (newIndex === selectedRouteIndex) {
+        return; // Already selected
+    }
+
+    selectedRouteIndex = newIndex;
+    console.log(`🎯 User selected Route ${newIndex + 1}`);
+
+    // Redraw routes with new visual distinction
+    if (ombreRouteLayer && map) {
+        map.removeLayer(ombreRouteLayer);
+    }
+    if (alternativeOmbreLayer && map) {
+        map.removeLayer(alternativeOmbreLayer);
+    }
+
+    routeOptions.forEach((routeOption, idx) => {
+        if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+            const isSelected = (idx === selectedRouteIndex);
+
+            const ombreLayer = drawOmbreRoute(
+                map,
+                routeOption.route.coordinates,
+                routeOption.crimeSamples,
+                isSelected ? 0.8 : 0.4,
+                isSelected ? null : '10, 10'
+            );
+
+            if (isSelected) {
+                ombreRouteLayer = ombreLayer;
+            } else {
+                alternativeOmbreLayer = ombreLayer;
+            }
+        }
+    });
+
+    // Update UI to reflect selection
+    updateRouteComparisonUI();
+
+    // Update main route info panel with selected route data
+    const selectedRoute = routeOptions[selectedRouteIndex];
+    updateRouteInfo(selectedRoute);
+
+    // Update currentRoute and currentRouteData for navigation
+    currentRoute = selectedRoute.route;
+    currentRouteData = {
+        distance: selectedRoute.distance,
+        duration: selectedRoute.duration,
+        distanceText: selectedRoute.distanceText,
+        durationText: selectedRoute.durationText,
+        safetyScore: selectedRoute.safetyScore,
+        safetyLabel: selectedRoute.safetyLabel,
+        safetyColor: selectedRoute.safetyColor,
+        safetyBreakdown: selectedRoute.safetyBreakdown,
+        usingCrimeData: selectedRoute.usingCrimeData,
+        inSanFrancisco: selectedRoute.inSanFrancisco,
+        crimeCount: selectedRoute.crimeCount,
+        rawCrimeData: selectedRoute.rawCrimeData,
+        crimeSamples: selectedRoute.crimeSamples,
+        showNighttimeWarning: selectedRoute.showNighttimeWarning
+    };
+
+    // Update crime markers on map for newly selected route
+    if (selectedRoute.rawCrimeData && selectedRoute.rawCrimeData.length > 0) {
+        // Remove existing crime markers if any
+        if (crimeMarkerClusterGroup && map) {
+            map.removeLayer(crimeMarkerClusterGroup);
+        }
+
+        // Add new crime markers for selected route
+        addCrimeMarkersToMap(selectedRoute.rawCrimeData);
+    } else if (crimeMarkerClusterGroup && map) {
+        // Remove crime markers if new route has no crime data
+        map.removeLayer(crimeMarkerClusterGroup);
+    }
+}
+
+function updateRouteInfo(routeData) {
+    // Update the main route info panel (Phase 1 UI)
+    const routeInfoPanel = document.getElementById('route-info');
+    const distanceSpan = document.getElementById('distance');
+    const durationSpan = document.getElementById('duration');
+    const safetyScoreSpan = document.getElementById('safety-score');
+    const safetyLabelSpan = document.getElementById('safety-label');
+
+    if (distanceSpan) distanceSpan.textContent = routeData.distanceText;
+    if (durationSpan) durationSpan.textContent = routeData.durationText;
+    if (safetyScoreSpan) safetyScoreSpan.textContent = `${routeData.safetyScore}/100`;
+    if (safetyLabelSpan) {
+        safetyLabelSpan.textContent = routeData.safetyLabel;
+        safetyLabelSpan.style.backgroundColor = routeData.safetyColor + '20';
+        safetyLabelSpan.style.color = routeData.safetyColor;
+    }
+
+    // Update nighttime warning
+    const nighttimeWarning = document.getElementById('nighttime-warning');
+    if (nighttimeWarning) {
+        nighttimeWarning.style.display = routeData.showNighttimeWarning ? 'flex' : 'none';
+    }
+
+    // Update "View Crime Details" button data
+    const viewCrimeDetailsBtn = document.getElementById('view-crime-details');
+    if (viewCrimeDetailsBtn) {
+        viewCrimeDetailsBtn.onclick = () => showCrimeBreakdown(routeData.safetyBreakdown);
+    }
 }
 
 // ========================================
@@ -2262,13 +2506,14 @@ function getSegmentColor(crimeCount) {
 }
 
 // Draw ombre-colored route based on crime density
-function drawOmbreRoute(map, routeCoordinates, crimeSamples) {
+function drawOmbreRoute(map, routeCoordinates, crimeSamples, opacity = 0.8, dashArray = null) {
     if (!map || !routeCoordinates || routeCoordinates.length === 0) {
         console.log('ℹ️ Cannot draw ombre route: missing data');
         return null;
     }
 
-    console.log(`🎨 Drawing ombre route with ${crimeSamples.length} crime samples...`);
+    const routeType = dashArray ? 'alternative' : 'main';
+    console.log(`🎨 Drawing ${routeType} ombre route with ${crimeSamples.length} crime samples...`);
 
     const ombreLayerGroup = L.layerGroup();
 
@@ -2316,13 +2561,19 @@ function drawOmbreRoute(map, routeCoordinates, crimeSamples) {
         }
 
         // Create polyline for this segment
-        const polyline = L.polyline(segmentCoords, {
+        const polylineOptions = {
             color: segmentColor,
             weight: 6,
-            opacity: 0.8,
+            opacity: opacity,  // Use parameter
             lineJoin: 'round',
             lineCap: 'round'
-        });
+        };
+
+        if (dashArray) {
+            polylineOptions.dashArray = dashArray;  // Add if provided
+        }
+
+        const polyline = L.polyline(segmentCoords, polylineOptions);
 
         ombreLayerGroup.addLayer(polyline);
     }
