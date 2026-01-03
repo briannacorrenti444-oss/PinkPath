@@ -1346,34 +1346,57 @@ function selectRoute(newIndex) {
 
     // Redraw routes with new visual distinction
     // Ensure old layers are fully removed before redrawing
+    console.log('🧹 Removing old route layers...');
     if (ombreRouteLayer && routeMap) {
+        console.log('  - Removing ombreRouteLayer');
         routeMap.removeLayer(ombreRouteLayer);
         ombreRouteLayer = null;  // Reset to null to ensure clean state
     }
     if (alternativeOmbreLayer && routeMap) {
+        console.log('  - Removing alternativeOmbreLayer');
         routeMap.removeLayer(alternativeOmbreLayer);
         alternativeOmbreLayer = null;  // Reset to null to ensure clean state
     }
 
+    console.log(`🎨 Redrawing ${routeOptions.length} routes with new styling...`);
     routeOptions.forEach((routeOption, idx) => {
         if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
             const isSelected = (idx === selectedRouteIndex);
+            const opacity = isSelected ? 0.8 : 0.4;
+            const dashArray = isSelected ? null : '10, 10';
+
+            console.log(`  - Route ${idx + 1}: ${isSelected ? 'SELECTED' : 'alternative'} (opacity: ${opacity}, dashArray: ${dashArray})`);
 
             const ombreLayer = drawOmbreRoute(
                 routeMap,
                 routeOption.route.coordinates,
                 routeOption.crimeSamples,
-                isSelected ? 0.8 : 0.4,
-                isSelected ? null : '10, 10'
+                opacity,
+                dashArray
             );
 
             if (isSelected) {
                 ombreRouteLayer = ombreLayer;
+                console.log('    ✓ Stored as ombreRouteLayer (selected)');
             } else {
                 alternativeOmbreLayer = ombreLayer;
+                console.log('    ✓ Stored as alternativeOmbreLayer (alternative)');
             }
         }
     });
+    console.log('✅ Route redraw complete');
+
+    // Hide the default routing control lines (Leaflet's pink lines)
+    // This ensures our ombre routes are visible with correct styling
+    if (routingControl) {
+        setTimeout(() => {
+            const routePaths = routeMap.getPane('overlayPane').querySelectorAll('.leaflet-routing-container path');
+            console.log(`🚫 Hiding ${routePaths.length} routing control path(s)`);
+            routePaths.forEach(path => {
+                path.style.opacity = '0';
+            });
+        }, 100);
+    }
 
     // Update UI to reflect selection
     updateRouteComparisonUI();
@@ -2522,6 +2545,7 @@ function drawOmbreRoute(map, routeCoordinates, crimeSamples, opacity = 0.8, dash
 
     const routeType = dashArray ? 'alternative' : 'main';
     console.log(`🎨 Drawing ${routeType} ombre route with ${crimeSamples.length} crime samples...`);
+    console.log(`   Parameters: opacity=${opacity}, dashArray=${dashArray}`);
 
     const ombreLayerGroup = L.layerGroup();
 
