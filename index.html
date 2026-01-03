@@ -36,7 +36,8 @@
     <!-- NAVIGATION HEADER (Visible on all screens) -->
     <header class="main-header">
         <div class="container header-content">
-            <div class="logo" onclick="goToScreen('screen-home')">
+            <!-- Logo - Clicks to go home -->
+            <div class="logo" id="logo-btn">
                 <div class="logo-icon">
                     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" fill="url(#gradient1)"/>
@@ -51,12 +52,14 @@
                 <span class="logo-text"><span class="pink">Pink</span>Path</span>
             </div>
             <nav class="main-nav">
-                <button class="nav-link" onclick="goToScreen('screen-home')">Home</button>
-                <button class="nav-link" onclick="goToScreen('screen-plan-route')">Plan Route</button>
-                <button class="nav-link" onclick="openModal('features-modal')">Features</button>
+                <!-- Desktop Navigation Links -->
+                <button class="nav-link" id="nav-home-btn">Home</button>
+                <button class="nav-link" id="nav-plan-route-btn">Plan Route</button>
+                <button class="nav-link" id="nav-features-btn">Features</button>
                 <button class="btn-small btn-primary-outline">Sign In</button>
             </nav>
-            <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+            <!-- Mobile Menu Toggle Button -->
+            <button class="mobile-menu-btn" id="mobile-menu-toggle-btn">
                 <span class="menu-bar"></span>
                 <span class="menu-bar"></span>
                 <span class="menu-bar"></span>
@@ -66,10 +69,11 @@
 
     <!-- MOBILE NAVIGATION MENU -->
     <div class="mobile-menu" id="mobile-menu">
-        <button class="nav-link" onclick="goToScreen('screen-home'); closeMobileMenu()">Home</button>
-        <button class="nav-link" onclick="goToScreen('screen-plan-route'); closeMobileMenu()">Plan Route</button>
-        <button class="nav-link" onclick="openModal('features-modal'); closeMobileMenu()">Features</button>
-        <button class="btn-small btn-primary-outline" onclick="closeMobileMenu()">Sign In</button>
+        <!-- Mobile Navigation Links (same actions as desktop but also close menu) -->
+        <button class="nav-link" id="mobile-nav-home-btn">Home</button>
+        <button class="nav-link" id="mobile-nav-plan-route-btn">Plan Route</button>
+        <button class="nav-link" id="mobile-nav-features-btn">Features</button>
+        <button class="btn-small btn-primary-outline" id="mobile-nav-signin-btn">Sign In</button>
     </div>
 
     <!-- SCREEN 1: HOME/LANDING PAGE -->
@@ -81,11 +85,12 @@
                     <p class="hero-subtitle">
                         Smart routing powered by real-time safety data. Find the safest path to your destination with crime analysis, foot traffic monitoring, and street lighting insights.
                     </p>
+                    <!-- Call-to-Action Buttons -->
                     <div class="hero-buttons">
-                        <button class="btn-large btn-primary" onclick="goToScreen('screen-plan-route')">
+                        <button class="btn-large btn-primary" id="hero-get-started-btn">
                             Get Started
                         </button>
-                        <button class="btn-large btn-secondary" onclick="openModal('features-modal')">
+                        <button class="btn-large btn-secondary" id="hero-learn-more-btn">
                             Learn More
                         </button>
                     </div>
@@ -215,7 +220,8 @@
                                 class="input-field"
                                 placeholder="Enter your current location"
                             >
-                            <button class="location-btn" id="use-location-btn" onclick="getUserLocation()" title="Use my current location">
+                            <!-- Button to get user's current GPS location -->
+                            <button class="location-btn" id="use-location-btn" title="Use my current location">
                                 <svg viewBox="0 0 24 24" fill="currentColor" class="location-icon">
                                     <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
                                 </svg>
@@ -249,7 +255,8 @@
 
                     <!-- Safety Preferences (Collapsible) -->
                     <div class="preferences-section">
-                        <button class="preferences-toggle" onclick="togglePreferences()">
+                        <!-- Toggle button to expand/collapse safety preferences -->
+                        <button class="preferences-toggle" id="preferences-toggle-btn">
                             <span class="preferences-label">
                                 <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-right: 8px;">
                                     <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
@@ -279,10 +286,12 @@
                     </div>
 
                     <!-- Action Buttons -->
-                    <button class="btn-large btn-primary" onclick="findRoute()">
+                    <!-- Button to calculate and display the safest route -->
+                    <button class="btn-large btn-primary" id="find-route-btn">
                         Find Safest Route
                     </button>
-                    <button class="btn-large btn-secondary" onclick="alert('Share Trip feature coming in Phase 7!')">
+                    <!-- Button to share trip details (Phase 7 feature) -->
+                    <button class="btn-large btn-secondary" id="share-trip-btn">
                         <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-right: 8px;">
                             <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/>
                         </svg>
@@ -308,7 +317,8 @@
         <section class="results-section">
             <div class="container-small">
                 <div class="section-header">
-                    <button class="back-button" onclick="goToScreen('screen-plan-route')">
+                    <!-- Button to go back to route planning screen -->
+                    <button class="back-button" id="back-to-planning-btn">
                         ← Back to Planning
                     </button>
                     <h1 class="page-title">Your Safest Route</h1>
@@ -416,7 +426,8 @@
 
                         <!-- Crime Details Button (shown only when crime data available) -->
                         <div class="crime-details-button-container" id="crime-details-btn-container" style="display: none;">
-                            <button class="btn-secondary btn-small" onclick="openCrimeDetailsModal()">
+                            <!-- Button to open modal showing detailed crime breakdown -->
+                            <button class="btn-secondary btn-small" id="view-crime-details-btn">
                                 View Crime Details
                             </button>
                         </div>
@@ -429,7 +440,8 @@
 
                     <!-- Action Buttons -->
                     <div class="action-buttons">
-                        <button class="btn-large btn-primary" onclick="startNavigation()">
+                        <!-- Button to begin turn-by-turn navigation -->
+                        <button class="btn-large btn-primary" id="start-navigation-btn">
                             Start Navigation
                         </button>
                     </div>
@@ -462,7 +474,8 @@
                                 <span id="nav-status-text">ACTIVE ROUTE</span>
                             </span>
                         </div>
-                        <button class="icon-button" onclick="endNavigation()" title="End Navigation">
+                        <!-- Button to stop navigation and return to results screen -->
+                        <button class="icon-button" id="end-navigation-btn" title="End Navigation">
                             <svg viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                             </svg>
@@ -482,13 +495,15 @@
 
                     <!-- Preview Navigation Buttons (Preview Mode Only) -->
                     <div class="preview-nav-buttons" id="preview-nav-buttons">
-                        <button class="btn-secondary" id="btn-prev-step" onclick="previousStep()" style="display: none;">
+                        <!-- Button to go to previous navigation step (preview mode) -->
+                        <button class="btn-secondary" id="btn-prev-step" style="display: none;">
                             <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-right: 8px;">
                                 <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
                             </svg>
                             Previous
                         </button>
-                        <button class="btn-primary" id="btn-next-step" onclick="nextStep()" style="display: none;">
+                        <!-- Button to go to next navigation step (preview mode) -->
+                        <button class="btn-primary" id="btn-next-step" style="display: none;">
                             Next
                             <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-left: 8px;">
                                 <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
@@ -514,7 +529,8 @@
 
                 <!-- Emergency Section -->
                 <div class="emergency-panel">
-                    <button class="btn-emergency" onclick="showEmergencyAlert()">
+                    <!-- Button to trigger emergency alert to contacts -->
+                    <button class="btn-emergency" id="emergency-sos-btn">
                         <svg viewBox="0 0 24 24" fill="currentColor" style="width: 24px; height: 24px; margin-right: 8px;">
                             <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
                         </svg>
@@ -522,13 +538,15 @@
                     </button>
                     <p class="emergency-note">Your emergency contacts will be notified with your location</p>
                     <div class="emergency-actions">
-                        <button class="btn-emergency-small" onclick="alert('Calling 911...')">
+                        <!-- Button to call 911 -->
+                        <button class="btn-emergency-small" id="call-911-btn">
                             <svg viewBox="0 0 24 24" fill="currentColor" style="width: 18px; height: 18px; margin-right: 6px;">
                                 <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
                             </svg>
                             Call 911
                         </button>
-                        <button class="btn-emergency-small" onclick="alert('Alerting contacts...')">
+                        <!-- Button to alert emergency contacts -->
+                        <button class="btn-emergency-small" id="alert-contacts-btn">
                             <svg viewBox="0 0 24 24" fill="currentColor" style="width: 18px; height: 18px; margin-right: 6px;">
                                 <path d="M12 5.9c1.16 0 2.1.94 2.1 2.1s-.94 2.1-2.1 2.1S9.9 9.16 9.9 8s.94-2.1 2.1-2.1m0 9c2.97 0 6.1 1.46 6.1 2.1v1.1H5.9V17c0-.64 3.13-2.1 6.1-2.1M12 4C9.79 4 8 5.79 8 8s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 9c-2.67 0-8 1.34-8 4v3h16v-3c0-2.66-5.33-4-8-4z"/>
                             </svg>
@@ -539,13 +557,15 @@
 
                 <!-- Quick Actions -->
                 <div class="quick-actions">
-                    <button class="quick-action-btn" onclick="alert('Share Live Location feature coming in Phase 7!')">
+                    <!-- Button to share live location (Phase 7 feature) -->
+                    <button class="quick-action-btn" id="share-live-location-btn">
                         <svg viewBox="0 0 24 24" fill="currentColor" style="width: 28px; height: 28px;">
                             <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
                         </svg>
                         <span>Share Live Location</span>
                     </button>
-                    <button class="quick-action-btn" onclick="alert('Alternative routes coming soon!')">
+                    <!-- Button to show alternative routes -->
+                    <button class="quick-action-btn" id="alternative-routes-btn">
                         <svg viewBox="0 0 24 24" fill="currentColor" style="width: 28px; height: 28px;">
                             <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
                         </svg>
@@ -557,11 +577,12 @@
     </div>
 
     <!-- FEATURES MODAL (Optional Onboarding) -->
-    <div class="modal" id="features-modal" onclick="closeModalOnBackdrop(event, 'features-modal')">
+    <div class="modal" id="features-modal">
         <div class="modal-content">
             <div class="modal-header">
                 <h2>How PinkPath Keeps You Safe</h2>
-                <button class="modal-close" onclick="closeModal('features-modal')">
+                <!-- Button to close features modal -->
+                <button class="modal-close" id="features-modal-close-btn">
                     <svg viewBox="0 0 24 24" fill="currentColor">
                         <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                     </svg>
@@ -606,7 +627,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-large btn-primary" onclick="closeModal('features-modal'); goToScreen('screen-plan-route')">
+                <!-- Button to close modal and go to plan route screen -->
+                <button class="btn-large btn-primary" id="features-modal-get-started-btn">
                     Get Started
                 </button>
             </div>
@@ -614,11 +636,12 @@
     </div>
 
     <!-- Crime Details Modal -->
-    <div class="modal" id="crime-details-modal" onclick="closeModalOnBackdrop(event, 'crime-details-modal')">
+    <div class="modal" id="crime-details-modal">
         <div class="modal-dialog modal-medium">
             <div class="modal-header">
                 <h2>Crime Data Details</h2>
-                <button class="icon-button" onclick="closeModal('crime-details-modal')">
+                <!-- Button to close crime details modal -->
+                <button class="icon-button" id="crime-modal-close-btn">
                     <svg viewBox="0 0 24 24" fill="currentColor">
                         <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                     </svg>
@@ -661,7 +684,8 @@
 
                     <div class="total-crimes">
                         <strong>Total:</strong> <span id="total-crimes-count">0</span> incidents (last 30 days)
-                        <button class="btn-text" id="more-info-btn" onclick="toggleCrimeDetails()">
+                        <!-- Button to toggle expanded crime details -->
+                        <button class="btn-text" id="more-info-btn">
                             More Info ▼
                         </button>
                     </div>
@@ -707,7 +731,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-large btn-secondary" onclick="closeModal('crime-details-modal')">
+                <!-- Button to close crime details modal -->
+                <button class="btn-large btn-secondary" id="crime-modal-close-footer-btn">
                     Close
                 </button>
             </div>

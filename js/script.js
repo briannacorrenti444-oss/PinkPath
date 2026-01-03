@@ -3620,6 +3620,240 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // ========================================
+    // EVENT LISTENERS - Navigation & Header
+    // ========================================
+
+    // Logo - click to go home
+    const logoBtn = document.getElementById('logo-btn');
+    if (logoBtn) {
+        logoBtn.addEventListener('click', () => goToScreen('screen-home'));
+    }
+
+    // Desktop navigation links
+    const navHomeBtn = document.getElementById('nav-home-btn');
+    if (navHomeBtn) {
+        navHomeBtn.addEventListener('click', () => goToScreen('screen-home'));
+    }
+
+    const navPlanRouteBtn = document.getElementById('nav-plan-route-btn');
+    if (navPlanRouteBtn) {
+        navPlanRouteBtn.addEventListener('click', () => goToScreen('screen-plan-route'));
+    }
+
+    const navFeaturesBtn = document.getElementById('nav-features-btn');
+    if (navFeaturesBtn) {
+        navFeaturesBtn.addEventListener('click', () => {
+            goToScreen('screen-home');
+            // Scroll to features section after a brief delay
+            setTimeout(() => {
+                const featuresSection = document.querySelector('.features-brief');
+                if (featuresSection) {
+                    featuresSection.scrollIntoView({ behavior: 'smooth' });
+                }
+            }, 300);
+        });
+    }
+
+    // Mobile menu toggle
+    const mobileMenuToggleBtn = document.getElementById('mobile-menu-toggle-btn');
+    if (mobileMenuToggleBtn) {
+        mobileMenuToggleBtn.addEventListener('click', toggleMobileMenu);
+    }
+
+    // Mobile navigation links
+    const mobileNavHomeBtn = document.getElementById('mobile-nav-home-btn');
+    if (mobileNavHomeBtn) {
+        mobileNavHomeBtn.addEventListener('click', () => {
+            goToScreen('screen-home');
+            closeMobileMenu();
+        });
+    }
+
+    const mobileNavPlanRouteBtn = document.getElementById('mobile-nav-plan-route-btn');
+    if (mobileNavPlanRouteBtn) {
+        mobileNavPlanRouteBtn.addEventListener('click', () => {
+            goToScreen('screen-plan-route');
+            closeMobileMenu();
+        });
+    }
+
+    const mobileNavFeaturesBtn = document.getElementById('mobile-nav-features-btn');
+    if (mobileNavFeaturesBtn) {
+        mobileNavFeaturesBtn.addEventListener('click', () => {
+            goToScreen('screen-home');
+            closeMobileMenu();
+            // Scroll to features section after a brief delay
+            setTimeout(() => {
+                const featuresSection = document.querySelector('.features-brief');
+                if (featuresSection) {
+                    featuresSection.scrollIntoView({ behavior: 'smooth' });
+                }
+            }, 300);
+        });
+    }
+
+    // ========================================
+    // EVENT LISTENERS - Home Screen
+    // ========================================
+
+    const heroGetStartedBtn = document.getElementById('hero-get-started-btn');
+    if (heroGetStartedBtn) {
+        heroGetStartedBtn.addEventListener('click', () => goToScreen('screen-plan-route'));
+    }
+
+    const heroLearnMoreBtn = document.getElementById('hero-learn-more-btn');
+    if (heroLearnMoreBtn) {
+        heroLearnMoreBtn.addEventListener('click', () => openModal('features-modal'));
+    }
+
+    // ========================================
+    // EVENT LISTENERS - Plan Route Screen
+    // ========================================
+
+    const useLocationBtn = document.getElementById('use-location-btn');
+    if (useLocationBtn) {
+        useLocationBtn.addEventListener('click', getUserLocation);
+    }
+
+    const preferencesToggleBtn = document.getElementById('preferences-toggle-btn');
+    if (preferencesToggleBtn) {
+        preferencesToggleBtn.addEventListener('click', togglePreferences);
+    }
+
+    const findRouteBtn = document.getElementById('find-route-btn');
+    if (findRouteBtn) {
+        findRouteBtn.addEventListener('click', findRoute);
+    }
+
+    const shareTripBtn = document.getElementById('share-trip-btn');
+    if (shareTripBtn) {
+        shareTripBtn.addEventListener('click', () => {
+            alert('Share Trip feature coming in Phase 7!');
+        });
+    }
+
+    // ========================================
+    // EVENT LISTENERS - Route Results Screen
+    // ========================================
+
+    const backToPlanningBtn = document.getElementById('back-to-planning-btn');
+    if (backToPlanningBtn) {
+        backToPlanningBtn.addEventListener('click', () => goToScreen('screen-plan-route'));
+    }
+
+    const viewCrimeDetailsBtn = document.getElementById('view-crime-details-btn');
+    if (viewCrimeDetailsBtn) {
+        viewCrimeDetailsBtn.addEventListener('click', openCrimeDetailsModal);
+    }
+
+    const startNavigationBtn = document.getElementById('start-navigation-btn');
+    if (startNavigationBtn) {
+        startNavigationBtn.addEventListener('click', startNavigation);
+    }
+
+    // ========================================
+    // EVENT LISTENERS - Active Navigation Screen
+    // ========================================
+
+    const endNavigationBtn = document.getElementById('end-navigation-btn');
+    if (endNavigationBtn) {
+        endNavigationBtn.addEventListener('click', endNavigation);
+    }
+
+    const btnPrevStep = document.getElementById('btn-prev-step');
+    if (btnPrevStep) {
+        btnPrevStep.addEventListener('click', previousStep);
+    }
+
+    const btnNextStep = document.getElementById('btn-next-step');
+    if (btnNextStep) {
+        btnNextStep.addEventListener('click', nextStep);
+    }
+
+    const emergencySosBtn = document.getElementById('emergency-sos-btn');
+    if (emergencySosBtn) {
+        emergencySosBtn.addEventListener('click', showEmergencyAlert);
+    }
+
+    const call911Btn = document.getElementById('call-911-btn');
+    if (call911Btn) {
+        call911Btn.addEventListener('click', () => {
+            alert('Calling 911...');
+        });
+    }
+
+    const alertContactsBtn = document.getElementById('alert-contacts-btn');
+    if (alertContactsBtn) {
+        alertContactsBtn.addEventListener('click', () => {
+            alert('Alerting contacts...');
+        });
+    }
+
+    const shareLiveLocationBtn = document.getElementById('share-live-location-btn');
+    if (shareLiveLocationBtn) {
+        shareLiveLocationBtn.addEventListener('click', () => {
+            alert('Share Live Location feature coming in Phase 7!');
+        });
+    }
+
+    const alternativeRoutesBtn = document.getElementById('alternative-routes-btn');
+    if (alternativeRoutesBtn) {
+        alternativeRoutesBtn.addEventListener('click', () => {
+            alert('Alternative routes coming soon!');
+        });
+    }
+
+    // ========================================
+    // EVENT LISTENERS - Features Modal
+    // ========================================
+
+    const featuresModal = document.getElementById('features-modal');
+    if (featuresModal) {
+        featuresModal.addEventListener('click', (event) => {
+            closeModalOnBackdrop(event, 'features-modal');
+        });
+    }
+
+    const featuresModalCloseBtn = document.getElementById('features-modal-close-btn');
+    if (featuresModalCloseBtn) {
+        featuresModalCloseBtn.addEventListener('click', () => closeModal('features-modal'));
+    }
+
+    const featuresModalGetStartedBtn = document.getElementById('features-modal-get-started-btn');
+    if (featuresModalGetStartedBtn) {
+        featuresModalGetStartedBtn.addEventListener('click', () => {
+            closeModal('features-modal');
+            goToScreen('screen-plan-route');
+        });
+    }
+
+    // ========================================
+    // EVENT LISTENERS - Crime Details Modal
+    // ========================================
+
+    const crimeDetailsModal = document.getElementById('crime-details-modal');
+    if (crimeDetailsModal) {
+        crimeDetailsModal.addEventListener('click', (event) => {
+            closeModalOnBackdrop(event, 'crime-details-modal');
+        });
+    }
+
+    const crimeModalCloseBtn = document.getElementById('crime-modal-close-btn');
+    if (crimeModalCloseBtn) {
+        crimeModalCloseBtn.addEventListener('click', () => closeModal('crime-details-modal'));
+    }
+
+    const moreInfoBtn = document.getElementById('more-info-btn');
+    if (moreInfoBtn) {
+        moreInfoBtn.addEventListener('click', toggleCrimeDetails);
+    }
+
+    const crimeModalCloseFooterBtn = document.getElementById('crime-modal-close-footer-btn');
+    if (crimeModalCloseFooterBtn) {
+        crimeModalCloseFooterBtn.addEventListener('click', () => closeModal('crime-details-modal'));
+    }
+
     console.log('====================================');
     console.log('📊 FEATURES:');
     console.log('✅ OpenStreetMap Integration');
