@@ -1345,11 +1345,14 @@ function selectRoute(newIndex) {
     console.log(`🎯 User selected Route ${newIndex + 1}`);
 
     // Redraw routes with new visual distinction
+    // Ensure old layers are fully removed before redrawing
     if (ombreRouteLayer && routeMap) {
         routeMap.removeLayer(ombreRouteLayer);
+        ombreRouteLayer = null;  // Reset to null to ensure clean state
     }
     if (alternativeOmbreLayer && routeMap) {
         routeMap.removeLayer(alternativeOmbreLayer);
+        alternativeOmbreLayer = null;  // Reset to null to ensure clean state
     }
 
     routeOptions.forEach((routeOption, idx) => {
