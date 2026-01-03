@@ -1344,11 +1344,11 @@ function selectRoute(newIndex) {
     console.log(`🎯 User selected Route ${newIndex + 1}`);
 
     // Redraw routes with new visual distinction
-    if (ombreRouteLayer && map) {
-        map.removeLayer(ombreRouteLayer);
+    if (ombreRouteLayer && routeMap) {
+        routeMap.removeLayer(ombreRouteLayer);
     }
-    if (alternativeOmbreLayer && map) {
-        map.removeLayer(alternativeOmbreLayer);
+    if (alternativeOmbreLayer && routeMap) {
+        routeMap.removeLayer(alternativeOmbreLayer);
     }
 
     routeOptions.forEach((routeOption, idx) => {
@@ -1356,7 +1356,7 @@ function selectRoute(newIndex) {
             const isSelected = (idx === selectedRouteIndex);
 
             const ombreLayer = drawOmbreRoute(
-                map,
+                routeMap,
                 routeOption.route.coordinates,
                 routeOption.crimeSamples,
                 isSelected ? 0.8 : 0.4,
@@ -1400,15 +1400,19 @@ function selectRoute(newIndex) {
     // Update crime markers on map for newly selected route
     if (selectedRoute.rawCrimeData && selectedRoute.rawCrimeData.length > 0) {
         // Remove existing crime markers if any
-        if (crimeMarkerClusterGroup && map) {
-            map.removeLayer(crimeMarkerClusterGroup);
+        if (crimeMarkerClusterGroup && routeMap) {
+            routeMap.removeLayer(crimeMarkerClusterGroup);
         }
 
         // Add new crime markers for selected route
-        addCrimeMarkersToMap(selectedRoute.rawCrimeData);
-    } else if (crimeMarkerClusterGroup && map) {
+        // Filter to recent violent crimes (last 7 days)
+        const recentCrimes = filterRecentViolentCrimes(selectedRoute.rawCrimeData);
+        if (recentCrimes.length > 0) {
+            crimeMarkerClusterGroup = addCrimeMarkersToMap(routeMap, recentCrimes, selectedRoute.route);
+        }
+    } else if (crimeMarkerClusterGroup && routeMap) {
         // Remove crime markers if new route has no crime data
-        map.removeLayer(crimeMarkerClusterGroup);
+        routeMap.removeLayer(crimeMarkerClusterGroup);
     }
 }
 
