@@ -1081,10 +1081,8 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
             alternatives: true // Request alternative routes
         }),
         lineOptions: {
-            styles: [
-                { color: routeColor, opacity: routeOpacity, weight: 6 }
-            ],
-            extendToWaypoints: true,
+            styles: [],  // Empty array = no lines drawn (we use ombre routes instead)
+            extendToWaypoints: false,
             missingRouteTolerance: 0
         },
         createMarker: function(i, waypoint, n) {
@@ -1256,15 +1254,7 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
             }
         });
 
-        // Hide the default routing control lines (Leaflet's pink lines)
-        if (routingControl) {
-            setTimeout(() => {
-                const routePaths = map.getPane('overlayPane').querySelectorAll('.leaflet-routing-container path');
-                routePaths.forEach(path => {
-                    path.style.opacity = '0';
-                });
-            }, 100);
-        }
+        // No need to hide routing control lines - we disabled them with styles: []
 
         // Update route comparison UI
         updateRouteComparisonUI();
@@ -1419,17 +1409,7 @@ function selectRoute(newIndex) {
     });
     console.log('✅ Route redraw complete');
 
-    // Hide the default routing control lines (Leaflet's pink lines)
-    // This ensures our ombre routes are visible with correct styling
-    if (routingControl) {
-        setTimeout(() => {
-            const routePaths = routeMap.getPane('overlayPane').querySelectorAll('.leaflet-routing-container path');
-            console.log(`🚫 Hiding ${routePaths.length} routing control path(s)`);
-            routePaths.forEach(path => {
-                path.style.opacity = '0';
-            });
-        }, 100);
-    }
+    // No need to hide routing control lines - we disabled them with styles: []
 
     // Update UI to reflect selection
     updateRouteComparisonUI();
