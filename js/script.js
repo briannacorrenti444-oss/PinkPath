@@ -12,7 +12,7 @@ import {
     SUNSET_API,
     SF_BOUNDS,
     CRIME_WEIGHTS,
-    pinkIcon
+    NOMINATIM_API
 } from './modules/config.js';
 
 import {
@@ -25,81 +25,251 @@ import {
     formatDuration
 } from './modules/utils.js';
 
-console.log("PinkPath loaded successfully! 🛡️");
-console.log("=====================================");
-console.log("Using OpenStreetMap + Leaflet");
-console.log("No API keys required!");
-console.log("=====================================");
+// Import crime service (PHASE 2A: Service Layer Extraction)
+// Note: filterCrimesLast30Days, groupCrimesByType, getCrimeSeverity moved to safetyController.js
+import {
+    isInSanFrancisco,
+    isRouteInSanFrancisco,
+    queryCrimesNearLocation,
+    queryCrimesAlongRoute,
+    calculateAreaBaseline,
+    scoreCrimeData,
+    analyzeDayNightCrimes,
+    filterRecentViolentCrimes
+} from './modules/services/crimeService.js';
+
+// Import sunset service (PHASE 2B: Service Layer Extraction)
+import {
+    getSunsetCacheKey,
+    getSunriseSunset,
+    isAfterSunset,
+    isBeforeSunrise,
+    isNearSunset
+} from './modules/services/sunsetService.js';
+
+// Import safety service (PHASE 2C: Service Layer Extraction)
+import {
+    calculateSafetyScore,
+    scoreRouteLength,
+    scoreTimeOfDay,
+    scoreRouteComplexity,
+    scoreRoadType,
+    scorePopulationDensity,
+    getSafetyLabel,
+    getSafetyColor
+} from './modules/services/safetyService.js';
+
+// Import geocoding service (PHASE 2D: Service Layer Extraction)
+import {
+    parseNominatimResult,
+    getLocationIcon,
+    geocodeAddress,
+    reverseGeocode,
+    searchAddresses
+} from './modules/services/geocodingService.js';
+
+// Import search controller (PHASE 3: Controller Extraction)
+import { setupAutocomplete } from './modules/controllers/searchController.js';
+
+// Import map controller (PHASE 3: Controller Extraction)
+import { showCurrentLocationOnMap, addMapStyleToggle } from './modules/controllers/mapController.js';
+
+// Import safety controller (PHASE 3: Controller Extraction)
+import {
+    updateSafetyDisplay,
+    openCrimeDetailsModal,
+    toggleCrimeDetails
+} from './modules/controllers/safetyController.js';
+
+// Import route controller (PHASE 3: Controller Extraction)
+import {
+    sampleRoutePoints,
+    getSegmentColor,
+    drawOmbreRoute,
+    drawBasicRoute,
+    addCrimeMarkersToMap,
+    calculateDistanceToPolyline,
+    distanceToSegment
+} from './modules/controllers/routeController.js';
 
 // ========================================
-// LEAFLET MAP VARIABLES
+// MAP ICONS (browser-only, not in config.js)
 // ========================================
 
-let routeMap = null;
-let navigationMap = null;
-let routingControl = null;
-let currentRoute = null;
-let startMarker = null;
-let destinationMarker = null;
-let crimeMarkerClusterGroup = null; // Crime markers on route map
-let navCrimeMarkerClusterGroup = null; // Crime markers on navigation map
-let ombreRouteLayer = null; // Ombre-colored route on route map
-let navOmbreRouteLayer = null; // Ombre-colored route on navigation map
-let navAlternativeOmbreLayer = null; // Alternative ombre route on navigation map
+const pinkIcon = L.icon({
+    iconUrl: 'data:image/svg+xml;base64,' + btoa(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+            <path fill="#ff1493" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+        </svg>
+    `),
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+    popupAnchor: [0, -32]
+});
 
-// Tile layers for light/dark mode
+// ========================================
+// APPLICATION STATE
+// ========================================
+//
+// STATE ARCHITECTURE OVERVIEW:
+// ---------------------------
+// This app uses module-level state organized into logical groups:
+//
+// 1. MAP STATE - Leaflet map instances and layers
+//    - Modified by: initializeRouteMap(), initializeNavigationMap(), selectRoute()
+//    - Read by: All map rendering functions
+//
+// 2. LOCATION STATE - User's selected/current locations
+//    - Modified by: handleAddressSearch(), getUserLocation(), GPS callbacks
+//    - Read by: calculateAndDisplayRoute(), navigation functions
+//
+// 3. ROUTE STATE - Calculated routes and selection
+//    - Modified by: routesfound event, selectRoute()
+//    - Read by: UI display functions, navigation functions
+//
+// 4. NAVIGATION STATE - Turn-by-turn navigation status
+//    - Modified by: startNavigation(), GPS tracking, stopNavigation()
+//    - Read by: updateNavigationUI(), position tracking functions
+//
+// 5. UI STATE - Visual preferences
+//    - Modified by: toggleMapStyle(), user interactions
+//    - Read by: Map rendering functions
+//
+// ========================================
+
+// ----------------------------------------
+// 1. MAP STATE
+// Leaflet map instances, layers, and markers
+// ----------------------------------------
+
+// Map instances (one per screen)
+let routeMap = null;                    // Map on route results screen
+let navigationMap = null;               // Map on navigation screen
+let routingControl = null;              // Leaflet Routing Machine control
+
+// Route visualization layers (route results screen)
+let ombreRouteLayer = null;             // Selected route's colored line
+let alternativeOmbreLayer = null;       // Alternative route's colored line (dashed)
+let crimeMarkerClusterGroup = null;     // Crime markers cluster
+
+// Route visualization layers (navigation screen)
+let navOmbreRouteLayer = null;          // Route line on navigation map
+let navAlternativeOmbreLayer = null;    // Alternative route on navigation map
+let navCrimeMarkerClusterGroup = null;  // Crime markers on navigation map
+
+// Location markers
+let startMarker = null;                 // Green pin at start location
+let destinationMarker = null;           // Red pin at destination
+let locationMarker = null;              // Blue dot showing initial "you are here"
+let navigationMarker = null;            // Blue dot during active navigation
+
+// Tile layers for light/dark mode toggle
 let lightTileLayer = null;
 let darkTileLayer = null;
-let currentMode = 'light'; // Default to light mode
 
-// Selected locations from autocomplete
-let selectedStart = null;
-let selectedDestination = null;
+// ----------------------------------------
+// 2. LOCATION STATE
+// User's selected start/destination and GPS position
+// ----------------------------------------
 
-// Current user location
-let currentUserLocation = null;
-let locationMarker = null;
+// Route planning locations (set via autocomplete or "Use My Location")
+let selectedStart = null;               // {lat, lng, name} - Start point for route
+let selectedDestination = null;         // {lat, lng, name} - Destination for route
 
-// Current route data (populated when route is calculated)
+// GPS locations (different lifecycles!)
+let currentUserLocation = null;         // {lat, lng, accuracy} - One-time fix from "Use My Location" button
+                                        // Used for: route planning, bounding box searches
+                                        // Set by: getUserLocation() success callback
+
+let currentUserPosition = null;         // {lat, lng, accuracy, heading} - Live GPS during navigation
+                                        // Used for: real-time position tracking, off-route detection
+                                        // Set by: GPS watchPosition callback during navigation
+
+let destinationLocation = null;         // {lat, lng} - Destination during active navigation
+
+// ----------------------------------------
+// 3. ROUTE STATE
+// Calculated routes, selection, and route data
+// ----------------------------------------
+
+// The currently selected route object (from Leaflet Routing Machine)
+let currentRoute = null;                // Leaflet route object with coordinates, instructions
+
+// Processed route data for UI display
 let currentRouteData = {
-    distance: null,         // in miles
-    duration: null,         // in minutes
-    distanceText: null,     // formatted string
-    durationText: null,     // formatted string
-    safetyScore: null,      // 0-10 scale
-    safetyLabel: null,      // "Excellent", "Good", "Fair", "Caution"
-    safetyColor: null,      // CSS class name
-    safetyBreakdown: null,  // Object with individual scores
-    rawCrimeData: null      // Store raw crime array for detailed analysis
+    distance: null,                     // Distance in miles
+    duration: null,                     // Duration in minutes
+    distanceText: null,                 // Formatted: "1.2 mi"
+    durationText: null,                 // Formatted: "25 min"
+    safetyScore: null,                  // 0-10 scale
+    safetyLabel: null,                  // "Excellent", "Good", "Fair", "Caution"
+    safetyColor: null,                  // CSS class: "excellent", "good", "fair", "caution"
+    safetyBreakdown: null,              // Object with individual factor scores
+    usingCrimeData: null,               // Boolean: true if real crime data was used
+    inSanFrancisco: null,               // Boolean: true if route is in SF
+    crimeCount: null,                   // Number of crimes found along route
+    rawCrimeData: null,                 // Array of crime objects for detailed analysis
+    crimeSamples: null,                 // Crime samples for ombre coloring
+    showNighttimeWarning: null          // Boolean: show nighttime safety warning
 };
 
-// Alternative routes (for route comparison feature)
-let routeOptions = [];     // Array of route data objects
-let selectedRouteIndex = 0; // Index of currently selected route
-let alternativeOmbreLayer = null; // Ombre layer for alternative route
+// Route comparison (when multiple routes are available)
+let routeOptions = [];                  // Array of route data objects (all calculated routes)
+let selectedRouteIndex = 0;             // Index of currently selected route in routeOptions
 
-// Navigation state (Phase 3)
-let isNavigating = false;
-let navigationWatchId = null;
-let currentStepIndex = 0;
-let routeSteps = [];
-let routeCoordinates = [];
-let currentUserPosition = null;
-let destinationLocation = null;
-let navigationMarker = null;
-let isRecalculating = false;
-let isPreviewMode = false; // Preview mode (far from start) vs Live mode (at start with GPS)
+// Route geometry for navigation
+let routeSteps = [];                    // Array of turn-by-turn instruction objects
+let routeCoordinates = [];              // Array of [lat, lng] points along route
 
-// Crime cache (24-hour cache to reduce API calls)
-const crimeCache = new Map();
+// ----------------------------------------
+// 4. NAVIGATION STATE
+// Turn-by-turn navigation status and progress
+// ----------------------------------------
 
-// Sunrise-Sunset API cache
-const sunsetCache = new Map();
+let isNavigating = false;               // Is navigation currently active?
+let isPreviewMode = false;              // true = preview (far from start), false = live GPS tracking
+let isRecalculating = false;            // Is route being recalculated? (prevents duplicate recalcs)
+
+let currentStepIndex = 0;               // Current step in routeSteps array
+let navigationWatchId = null;           // GPS watchPosition ID (for cleanup)
+
+// ----------------------------------------
+// 5. UI STATE
+// Visual preferences and UI timers
+// ----------------------------------------
+
+let currentMode = 'light';              // Map color mode: 'light' or 'dark'
+
+// ----------------------------------------
+// MIGRATED STATE (now in service modules)
+// ----------------------------------------
+// crimeCache - moved to crimeService.js
+// sunsetCache - moved to sunsetService.js
 
 // ========================================
 // SCREEN NAVIGATION
 // ========================================
 
+/**
+ * Navigate to a different screen in the single-page app
+ *
+ * WHAT IT DOES:
+ * Hides all screens and shows the target screen. This is how the app
+ * switches between Home, Plan Route, Route Results, and Navigation views.
+ *
+ * SIDE EFFECTS:
+ * - Scrolls to top of page
+ * - Closes mobile menu if open
+ * - Initializes route map when showing route results screen
+ *
+ * @param {string} screenId - The HTML id of the screen to show (e.g., 'screen-home')
+ *
+ * SCREENS:
+ * - 'screen-home': Landing page
+ * - 'screen-plan-route': Address input form
+ * - 'screen-route-results': Map with route options
+ * - 'screen-active-navigation': Turn-by-turn navigation
+ */
 function goToScreen(screenId) {
     // Hide all screens
     const allScreens = document.querySelectorAll('.screen');
@@ -131,11 +301,18 @@ function goToScreen(screenId) {
 // MOBILE MENU
 // ========================================
 
+/**
+ * Toggle the mobile navigation menu open/closed
+ */
 function toggleMobileMenu() {
     const mobileMenu = document.getElementById('mobile-menu');
     mobileMenu.classList.toggle('active');
 }
 
+/**
+ * Close the mobile navigation menu
+ * Called when navigating to a new screen or clicking outside menu
+ */
 function closeMobileMenu() {
     const mobileMenu = document.getElementById('mobile-menu');
     mobileMenu.classList.remove('active');
@@ -207,278 +384,10 @@ function togglePreferences() {
 }
 
 // ========================================
-// NOMINATIM GEOCODING (Address Autocomplete)
-// ========================================
-
-let autocompleteTimeout = null;
-
-// Parse Nominatim result into cleaner format
-function parseNominatimResult(result) {
-    const displayName = result.display_name;
-    const address = result.address || {};
-
-    // Try to extract the primary name (POI, building, etc.)
-    let primaryName = null;
-    let isPlace = false;
-
-    // Check for specific location types (POIs, businesses, etc.)
-    if (address.amenity) {
-        primaryName = address.amenity;
-        isPlace = true;
-    } else if (address.shop) {
-        primaryName = address.shop;
-        isPlace = true;
-    } else if (address.tourism) {
-        primaryName = address.tourism;
-        isPlace = true;
-    } else if (address.building && address.building !== 'yes') {
-        primaryName = address.building;
-        isPlace = true;
-    } else if (result.name && result.name !== result.type) {
-        primaryName = result.name;
-        isPlace = true;
-    }
-
-    // Build secondary address (everything except the primary name)
-    let secondaryAddress = '';
-
-    if (isPlace && primaryName) {
-        // For POIs, show the street address
-        const parts = [];
-        if (address.house_number && address.road) {
-            parts.push(`${address.house_number} ${address.road}`);
-        } else if (address.road) {
-            parts.push(address.road);
-        }
-        if (address.city || address.town || address.village) {
-            parts.push(address.city || address.town || address.village);
-        }
-        if (address.state) {
-            parts.push(address.state);
-        }
-        secondaryAddress = parts.join(', ');
-    } else {
-        // For regular addresses, use the full display name
-        secondaryAddress = displayName;
-    }
-
-    return {
-        primaryName: primaryName,
-        secondaryAddress: secondaryAddress || displayName,
-        isPlace: isPlace,
-        type: result.type,
-        category: result.class
-    };
-}
-
-// Get icon for location type
-function getLocationIcon(parsedResult) {
-    if (!parsedResult.isPlace) {
-        return '📍'; // Regular address
-    }
-
-    const category = parsedResult.category;
-    const type = parsedResult.type;
-
-    // Category-based icons
-    if (category === 'amenity') {
-        if (type === 'restaurant' || type === 'fast_food' || type === 'cafe') return '🍽️';
-        if (type === 'bar' || type === 'pub') return '🍺';
-        if (type === 'hospital' || type === 'clinic' || type === 'pharmacy') return '🏥';
-        if (type === 'school' || type === 'university' || type === 'college') return '🎓';
-        if (type === 'bank' || type === 'atm') return '🏦';
-        if (type === 'fuel') return '⛽';
-        if (type === 'parking') return '🅿️';
-        if (type === 'police') return '👮';
-        if (type === 'post_office') return '📮';
-        if (type === 'library') return '📚';
-        return '🏢';
-    }
-
-    if (category === 'shop') {
-        if (type === 'supermarket' || type === 'convenience') return '🛒';
-        if (type === 'mall' || type === 'department_store') return '🏬';
-        if (type === 'clothes' || type === 'fashion') return '👔';
-        if (type === 'bakery') return '🥖';
-        if (type === 'coffee') return '☕';
-        return '🏪';
-    }
-
-    if (category === 'tourism') {
-        if (type === 'hotel' || type === 'motel') return '🏨';
-        if (type === 'museum') return '🏛️';
-        if (type === 'attraction') return '🎡';
-        return '🗺️';
-    }
-
-    if (category === 'building') {
-        return '🏢';
-    }
-
-    return '📍'; // Default
-}
-
-function setupAutocomplete(inputId) {
-    const input = document.getElementById(inputId);
-    if (!input) return;
-
-    // Create dropdown container
-    const dropdown = document.createElement('div');
-    dropdown.className = 'autocomplete-dropdown';
-    dropdown.style.display = 'none';
-    input.parentElement.style.position = 'relative';
-    input.parentElement.appendChild(dropdown);
-
-    // Add input listener
-    input.addEventListener('input', function() {
-        const query = input.value.trim();
-
-        if (query.length < 3) {
-            dropdown.style.display = 'none';
-            return;
-        }
-
-        // Debounce requests
-        clearTimeout(autocompleteTimeout);
-        autocompleteTimeout = setTimeout(() => {
-            searchAddress(query, dropdown, input, inputId);
-        }, 300);
-    });
-
-    // Close dropdown when clicking outside
-    document.addEventListener('click', function(event) {
-        if (!input.contains(event.target) && !dropdown.contains(event.target)) {
-            dropdown.style.display = 'none';
-        }
-    });
-}
-
-function searchAddress(query, dropdown, input, inputId) {
-    dropdown.innerHTML = '<div class="autocomplete-loading">Searching...</div>';
-    dropdown.style.display = 'block';
-
-    // Build URL with optional bounding box
-    let url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=20&addressdetails=1`;
-
-    // Add bounding box if we have user location (prioritize nearby results)
-    if (currentUserLocation) {
-        const bbox = createBoundingBox(currentUserLocation.lat, currentUserLocation.lng, 50); // 50km radius
-        url += `&viewbox=${bbox.left},${bbox.bottom},${bbox.right},${bbox.top}&bounded=1`;
-        console.log('🔍 Searching with bounding box around user location');
-    } else {
-        console.log('🔍 Searching globally (no user location available)');
-    }
-
-    fetch(url, {
-        headers: {
-            'User-Agent': 'PinkPath Safety Navigation App'
-        }
-    })
-    .then(response => response.json())
-    .then(results => {
-        dropdown.innerHTML = '';
-
-        if (results.length === 0) {
-            dropdown.innerHTML = '<div class="autocomplete-loading">No results found</div>';
-            return;
-        }
-
-        // Calculate distance for each result if we have user location
-        if (currentUserLocation) {
-            results.forEach(result => {
-                const distance = calculateDistance(
-                    currentUserLocation.lat,
-                    currentUserLocation.lng,
-                    parseFloat(result.lat),
-                    parseFloat(result.lon)
-                );
-                result.distance = distance;
-            });
-
-            // Sort by distance (closest first)
-            results.sort((a, b) => a.distance - b.distance);
-            console.log('✅ Results sorted by distance');
-        }
-
-        // Display top 5 results
-        const topResults = results.slice(0, 5);
-
-        topResults.forEach(result => {
-            const item = document.createElement('div');
-            item.className = 'autocomplete-item';
-
-            // Parse result for better formatting
-            const parsed = parseNominatimResult(result);
-            const icon = getLocationIcon(parsed);
-
-            // Format distance if available
-            let distanceHTML = '';
-            if (result.distance !== undefined) {
-                distanceHTML = `<span class="autocomplete-distance">${formatDistance(result.distance)}</span>`;
-            }
-
-            // Build HTML based on whether it's a place or address
-            if (parsed.isPlace && parsed.primaryName) {
-                // POI/Place with name + address
-                item.innerHTML = `
-                    <span class="autocomplete-icon">${icon}</span>
-                    <div class="autocomplete-content">
-                        <div class="autocomplete-primary">${parsed.primaryName}</div>
-                        <div class="autocomplete-secondary">${parsed.secondaryAddress}</div>
-                        ${distanceHTML}
-                    </div>
-                `;
-            } else {
-                // Regular address
-                item.innerHTML = `
-                    <span class="autocomplete-icon">${icon}</span>
-                    <div class="autocomplete-content">
-                        <div class="autocomplete-text">${parsed.secondaryAddress}</div>
-                        ${distanceHTML}
-                    </div>
-                `;
-            }
-
-            item.addEventListener('click', function() {
-                // For POIs, use the primary name; for addresses, use full display name
-                if (parsed.isPlace && parsed.primaryName) {
-                    input.value = `${parsed.primaryName}, ${parsed.secondaryAddress}`;
-                } else {
-                    input.value = result.display_name;
-                }
-                dropdown.style.display = 'none';
-
-                // Store the selected location
-                const location = {
-                    lat: parseFloat(result.lat),
-                    lng: parseFloat(result.lon),
-                    name: result.display_name
-                };
-
-                if (inputId === 'start-location') {
-                    selectedStart = location;
-                    console.log('Start location selected:', location);
-                } else if (inputId === 'destination') {
-                    selectedDestination = location;
-                    console.log('Destination selected:', location);
-                }
-            });
-
-            dropdown.appendChild(item);
-        });
-    })
-    .catch(error => {
-        console.error('Geocoding error:', error);
-        dropdown.innerHTML = '<div class="autocomplete-loading">Error searching addresses</div>';
-    });
-}
-
-// ========================================
 // ROUTE FINDING
 // ========================================
 
 async function findRoute() {
-    console.log('🔍 findRoute() called');
 
     const startLocation = document.getElementById('start-location').value.trim();
     const destination = document.getElementById('destination').value.trim();
@@ -527,33 +436,9 @@ async function findRoute() {
         }
     }
 
-    console.log('✅ Locations ready! Using OpenStreetMap + Leaflet (no API key needed!)');
 
     // Navigate to results screen
     goToScreen('screen-route-results');
-}
-
-// Helper function to geocode an address
-async function geocodeAddress(address) {
-    try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
-        const response = await fetch(url, {
-            headers: { 'User-Agent': 'PinkPath Safety Navigation App' }
-        });
-        const results = await response.json();
-
-        if (results.length > 0) {
-            return {
-                lat: parseFloat(results[0].lat),
-                lng: parseFloat(results[0].lon),
-                name: results[0].display_name
-            };
-        }
-        return null;
-    } catch (error) {
-        console.error('Geocoding error:', error);
-        return null;
-    }
 }
 
 // ========================================
@@ -614,7 +499,10 @@ async function getUserLocation() {
 
                 // Show location on map if visible
                 if (routeMap) {
-                    showCurrentLocationOnMap(routeMap, lat, lng, accuracy);
+                    showCurrentLocationOnMap(routeMap, lat, lng, accuracy, {
+                        getMarker: () => locationMarker,
+                        setMarker: (m) => { locationMarker = m; }
+                    });
                 }
             } else {
                 // Failed to get address
@@ -656,67 +544,32 @@ async function getUserLocation() {
     );
 }
 
-// Reverse geocode coordinates to address
-async function reverseGeocode(lat, lng) {
-    try {
-        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
-        const response = await fetch(url, {
-            headers: { 'User-Agent': 'PinkPath Safety Navigation App' }
-        });
-        const result = await response.json();
-
-        if (result && result.display_name) {
-            return result.display_name;
-        }
-        return null;
-    } catch (error) {
-        console.error('Reverse geocoding error:', error);
-        return null;
-    }
-}
-
-// Show current location on map with blue pulsing dot
-function showCurrentLocationOnMap(map, lat, lng, accuracy) {
-    console.log('🗺️ Showing location on map');
-
-    // Remove existing location marker if any
-    if (locationMarker) {
-        map.removeLayer(locationMarker);
-    }
-
-    // Create blue pulsing marker
-    const blueIcon = L.divIcon({
-        className: 'current-location-marker',
-        iconSize: [20, 20],
-        iconAnchor: [10, 10]
-    });
-
-    // Add marker
-    locationMarker = L.marker([lat, lng], { icon: blueIcon })
-        .addTo(map)
-        .bindPopup('You are here');
-
-    // Optional: Add accuracy circle
-    if (accuracy) {
-        L.circle([lat, lng], {
-            radius: accuracy,
-            color: '#4285f4',
-            fillColor: '#4285f4',
-            fillOpacity: 0.1,
-            weight: 1
-        }).addTo(map);
-    }
-
-    // Center map on location
-    map.setView([lat, lng], 15);
-}
-
 // ========================================
 // LEAFLET MAP INITIALIZATION
 // ========================================
 
+/**
+ * Initialize the route results map (shown after finding a route)
+ *
+ * WHAT IT DOES:
+ * Creates the Leaflet map on the route results screen where users
+ * see their calculated routes and safety scores.
+ *
+ * MAP SETUP:
+ * 1. Creates Leaflet map in 'route-map' container
+ * 2. Sets up light and dark tile layers (CARTO basemaps)
+ * 3. Adds light/dark mode toggle button
+ * 4. If route data exists, calculates and displays route
+ * 5. Otherwise shows a default marker
+ *
+ * STATE CHANGES:
+ * - routeMap = new Leaflet map instance
+ * - lightTileLayer = light mode tiles
+ * - darkTileLayer = dark mode tiles
+ *
+ * CALLED BY: goToScreen() when navigating to 'screen-route-results'
+ */
 function initializeRouteMap() {
-    console.log('🗺️ Initializing route map with Leaflet...');
 
     const mapElement = document.getElementById('route-map');
     if (!mapElement) {
@@ -743,7 +596,11 @@ function initializeRouteMap() {
         lightTileLayer.addTo(routeMap);
 
         // Add toggle button
-        addMapStyleToggle(routeMap);
+        addMapStyleToggle(routeMap, null, null, {
+            getMode: () => currentMode,
+            setMode: (m) => { currentMode = m; },
+            getDefaultLayers: () => ({ light: lightTileLayer, dark: darkTileLayer })
+        });
 
         // If we have selected locations, calculate route
         if (selectedStart && selectedDestination) {
@@ -756,12 +613,38 @@ function initializeRouteMap() {
                 .openPopup();
         }
 
-        console.log('✅ Route map initialized successfully');
     } catch (error) {
         console.error('❌ Error initializing route map:', error);
     }
 }
 
+/**
+ * Initialize the navigation map (for turn-by-turn directions)
+ *
+ * WHAT IT DOES:
+ * Creates the Leaflet map on the navigation screen. This map shows
+ * the user's live position and turn-by-turn route during navigation.
+ *
+ * DIFFERENCES FROM ROUTE MAP:
+ * - Higher default zoom (15 vs 13) for walking-level detail
+ * - Destroys and recreates if called multiple times
+ * - Inherits current light/dark mode setting
+ * - Calls invalidateSize() to fix container sizing issues
+ *
+ * MAP SETUP:
+ * 1. Removes existing navigation map if present
+ * 2. Creates new Leaflet map in 'navigation-map' container
+ * 3. Applies current mode (light/dark) from route results screen
+ * 4. Adds toggle button for switching modes
+ * 5. Triggers resize after 100ms for proper rendering
+ *
+ * STATE CHANGES:
+ * - navigationMap = new Leaflet map instance
+ *
+ * CALLED BY: initializeNavigationSequence() when starting navigation
+ *
+ * @returns {boolean} True if map initialized successfully, false on error
+ */
 function initializeNavigationMap() {
     console.log('🧭 Initializing navigation map with Leaflet...');
 
@@ -800,7 +683,11 @@ function initializeNavigationMap() {
         }
 
         // Add toggle button
-        addMapStyleToggle(navigationMap, navLightTileLayer, navDarkTileLayer);
+        addMapStyleToggle(navigationMap, navLightTileLayer, navDarkTileLayer, {
+            getMode: () => currentMode,
+            setMode: (m) => { currentMode = m; },
+            getDefaultLayers: () => ({ light: lightTileLayer, dark: darkTileLayer })
+        });
 
         // Force Leaflet to recalculate map size after container is rendered
         setTimeout(() => {
@@ -809,7 +696,6 @@ function initializeNavigationMap() {
             }
         }, 100);
 
-        console.log('✅ Navigation map initialized successfully');
         return true;
     } catch (error) {
         console.error('❌ Error initializing navigation map:', error);
@@ -817,7 +703,48 @@ function initializeNavigationMap() {
     }
 }
 
-// Display route on navigation map (for turn-by-turn navigation)
+/**
+ * Display the selected route on the navigation map
+ *
+ * WHAT IT DOES:
+ * Sets up the route display for turn-by-turn navigation. This is different
+ * from the route preview - it shows the route the user will actually walk,
+ * with crime markers and both route options visible.
+ *
+ * KEY BEHAVIOR:
+ * - Uses the ALREADY SELECTED route (currentRoute), not OSRM's first result
+ * - This preserves the user's Route 1 vs Route 2 choice from the preview screen
+ * - Draws both routes: selected (solid, bright) and alternative (dashed, faded)
+ *
+ * VISUAL ELEMENTS ADDED:
+ * 1. Ombre-colored route line (selected route - solid)
+ * 2. Alternative route line (dashed, 40% opacity)
+ * 3. Crime markers clustered on the map
+ * 4. No waypoint markers (user's position shown as blue dot instead)
+ *
+ * HOW IT WORKS:
+ * 1. Creates Leaflet Routing control (but hides its default lines)
+ * 2. On 'routesfound': extracts steps/coordinates from currentRoute
+ * 3. Draws ombre routes for both route options
+ * 4. Adds crime markers from currentRouteData.rawCrimeData
+ *
+ * STATE DEPENDENCIES:
+ * - navigationMap must be initialized
+ * - selectedStart, selectedDestination must be set
+ * - currentRoute must be set (from user's route selection)
+ * - routeOptions array with crime samples
+ *
+ * STATE CHANGES:
+ * - routeSteps = instructions from currentRoute
+ * - routeCoordinates = coordinates from currentRoute
+ * - navOmbreRouteLayer = selected route polyline
+ * - navAlternativeOmbreLayer = alternative route polyline
+ * - navCrimeMarkerClusterGroup = crime markers
+ *
+ * CALLED BY: initializeNavigationSequence() after map is ready
+ *
+ * @returns {boolean} True if route display started, false on error
+ */
 function displayRouteOnNavigationMap() {
     console.log('🗺️ Displaying route on navigation map...');
 
@@ -875,7 +802,6 @@ function displayRouteOnNavigationMap() {
         routeSteps = currentRoute.instructions || [];
         routeCoordinates = currentRoute.coordinates || [];
 
-        console.log('✅ Route displayed on navigation map');
         console.log(`📋 ${routeSteps.length} navigation steps ready`);
 
         // Add crime markers to navigation map
@@ -906,28 +832,52 @@ function displayRouteOnNavigationMap() {
         // First pass: Draw the selected route
         routeOptions.forEach((routeOption, idx) => {
             const isSelected = (idx === selectedRouteIndex);
-            if (isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
-                navOmbreRouteLayer = drawOmbreRoute(
-                    navigationMap,
-                    routeOption.route.coordinates,
-                    routeOption.crimeSamples,
-                    0.8,  // opacity: selected
-                    null  // dashArray: solid
-                );
+            if (isSelected) {
+                if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+                    // Draw ombre route with crime data
+                    navOmbreRouteLayer = drawOmbreRoute(
+                        navigationMap,
+                        routeOption.route.coordinates,
+                        routeOption.crimeSamples,
+                        0.8,  // opacity: selected
+                        null  // dashArray: solid
+                    );
+                } else {
+                    // Draw basic route (no crime data available)
+                    navOmbreRouteLayer = drawBasicRoute(
+                        navigationMap,
+                        routeOption.route.coordinates,
+                        0.8,  // opacity: selected
+                        null,  // dashArray: solid
+                        '#4285f4'  // color: blue
+                    );
+                }
             }
         });
 
         // Second pass: Draw the alternative route (on top)
         routeOptions.forEach((routeOption, idx) => {
             const isSelected = (idx === selectedRouteIndex);
-            if (!isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
-                navAlternativeOmbreLayer = drawOmbreRoute(
-                    navigationMap,
-                    routeOption.route.coordinates,
-                    routeOption.crimeSamples,
-                    0.4,  // opacity: alternative
-                    '10, 10'  // dashArray: dashed
-                );
+            if (!isSelected) {
+                if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+                    // Draw ombre route with crime data
+                    navAlternativeOmbreLayer = drawOmbreRoute(
+                        navigationMap,
+                        routeOption.route.coordinates,
+                        routeOption.crimeSamples,
+                        0.4,  // opacity: alternative
+                        '10, 10'  // dashArray: dashed
+                    );
+                } else {
+                    // Draw basic route (no crime data available)
+                    navAlternativeOmbreLayer = drawBasicRoute(
+                        navigationMap,
+                        routeOption.route.coordinates,
+                        0.4,  // opacity: alternative (faded)
+                        '10, 10',  // dashArray: dashed
+                        '#4285f4'  // color: blue
+                    );
+                }
             }
         });
 
@@ -945,81 +895,70 @@ function displayRouteOnNavigationMap() {
 }
 
 // ========================================
-// MAP STYLE TOGGLE
-// ========================================
-
-function addMapStyleToggle(map, lightLayer = null, darkLayer = null) {
-    // Create custom control
-    const MapStyleControl = L.Control.extend({
-        options: {
-            position: 'topright'
-        },
-
-        onAdd: function(map) {
-            const container = L.DomUtil.create('div', 'map-style-toggle');
-
-            container.innerHTML = `
-                <button class="style-toggle-btn" id="style-toggle-${map._leaflet_id}">
-                    <span class="toggle-option active">Light</span>
-                    <span class="toggle-divider">|</span>
-                    <span class="toggle-option">Dark</span>
-                </button>
-            `;
-
-            // Prevent map clicks when clicking the button
-            L.DomEvent.disableClickPropagation(container);
-
-            // Add click handler
-            container.querySelector('.style-toggle-btn').addEventListener('click', function() {
-                toggleMapStyle(map, lightLayer, darkLayer, this);
-            });
-
-            return container;
-        }
-    });
-
-    map.addControl(new MapStyleControl());
-}
-
-function toggleMapStyle(map, lightLayer = null, darkLayer = null, button) {
-    const light = lightLayer || lightTileLayer;
-    const dark = darkLayer || darkTileLayer;
-
-    if (currentMode === 'light') {
-        // Switch to dark
-        if (map.hasLayer(light)) {
-            map.removeLayer(light);
-        }
-        dark.addTo(map);
-        currentMode = 'dark';
-
-        // Update button UI
-        const options = button.querySelectorAll('.toggle-option');
-        options[0].classList.remove('active');
-        options[1].classList.add('active');
-
-        console.log('🌙 Switched to dark mode');
-    } else {
-        // Switch to light
-        if (map.hasLayer(dark)) {
-            map.removeLayer(dark);
-        }
-        light.addTo(map);
-        currentMode = 'light';
-
-        // Update button UI
-        const options = button.querySelectorAll('.toggle-option');
-        options[1].classList.remove('active');
-        options[0].classList.add('active');
-
-        console.log('☀️ Switched to light mode');
-    }
-}
-
-// ========================================
 // ROUTE CALCULATION WITH OSRM
 // ========================================
 
+/**
+ * The main function that calculates walking routes and displays them on the map.
+ * This is the "heart" of the routing system - it connects all the pieces together.
+ *
+ * WHAT IT DOES (in order):
+ * 1. Creates a Leaflet Routing Machine control to calculate routes
+ * 2. Sends request to OSRM (Open Source Routing Machine) for walking directions
+ * 3. When routes are found, for EACH route:
+ *    - Calculates distance and walking time
+ *    - Fetches crime data along the route (via safetyService)
+ *    - Calculates a safety score (0-10)
+ * 4. Auto-selects the safest route
+ * 5. Updates global state (currentRoute, currentRouteData, routeOptions)
+ * 6. Draws the ombre-colored routes on the map
+ * 7. Adds crime markers to the map
+ * 8. Updates the UI (route comparison cards, safety display)
+ *
+ * IMPORTANT CONCEPTS:
+ * - OSRM = Open Source Routing Machine (free routing API, like Google Directions)
+ * - The function is ASYNC because it waits for:
+ *   a) Routes from OSRM
+ *   b) Crime data from SF Open Data API
+ *   c) Sunset times from sunrise-sunset API
+ *
+ * STATE CHANGES:
+ * This function modifies these global variables:
+ * - routingControl (the Leaflet routing control)
+ * - routeOptions (array of all calculated routes)
+ * - selectedRouteIndex (which route is selected)
+ * - currentRoute (the selected route object)
+ * - currentRouteData (distance, duration, safety score, etc.)
+ * - ombreRouteLayer (the colored route line)
+ * - alternativeOmbreLayer (the dashed alternative route)
+ * - crimeMarkerClusterGroup (crime markers on map)
+ *
+ * @param {Object} start - The starting location
+ * @param {number} start.lat - Starting latitude (e.g., 37.7749)
+ * @param {number} start.lng - Starting longitude (e.g., -122.4194)
+ * @param {string} start.name - Display name (e.g., "Union Square, San Francisco")
+ * @param {Object} end - The destination location (same structure as start)
+ * @param {L.Map|null} [targetMap=null] - Which map to draw on. If null, uses routeMap.
+ * @returns {void} This function doesn't return anything - it updates global state and UI
+ *
+ * @example
+ * // Called when user clicks "Find Safest Route" button:
+ * calculateAndDisplayRoute(
+ *   { lat: 37.7749, lng: -122.4194, name: "Union Square" },
+ *   { lat: 37.8077, lng: -122.4177, name: "Fisherman's Wharf" }
+ * );
+ *
+ * @fires routesfound - Leaflet event when OSRM returns routes
+ * @fires routingerror - Leaflet event if routing fails
+ *
+ * @called-by initializeRouteMap() - when map is ready and locations are set
+ * @calls calculateSafetyScore() - for each route found
+ * @calls drawOmbreRoute() - to draw colored route lines
+ * @calls addCrimeMarkersToMap() - to show crime locations
+ * @calls updateRouteDisplay() - to update distance/time in UI
+ * @calls updateSafetyDisplay() - to update safety score in UI
+ * @calls updateRouteComparisonUI() - to build route comparison cards
+ */
 function calculateAndDisplayRoute(start, end, targetMap = null) {
     console.log('🔍 Calculating route with OSRM...');
     console.log('From:', start.name);
@@ -1095,7 +1034,8 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
             const durationText = formatDuration(durationMinutes);
 
             // Calculate safety score (ASYNC for Phase 2B)
-            const safetyData = await calculateSafetyScore(route, start, end);
+            // PHASE 2C: Pass currentUserLocation and sampleRoutePoints function
+            const safetyData = await calculateSafetyScore(route, start, end, currentUserLocation, sampleRoutePoints);
 
             return {
                 route: route,
@@ -1120,10 +1060,14 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
         // Wait for all routes to be processed
         routeOptions = await Promise.all(routePromises);
 
-        // Auto-select the safer route (higher safety score)
+        // AUTO-SELECT SAFEST ROUTE
+        // When multiple routes are available, automatically select the one
+        // with the highest safety score. This is a key UX feature - users
+        // see the safest option first, but can switch to alternatives.
         selectedRouteIndex = 0;
         if (routeOptions.length > 1) {
-            // Find route with highest safety score
+            // Using reduce to find the index of the route with max safety score
+            // reduce(callback, initialValue) - starts at index 0, compares each route
             const safestIndex = routeOptions.reduce((maxIdx, route, idx, arr) =>
                 route.safetyScore > arr[maxIdx].safetyScore ? idx : maxIdx, 0
             );
@@ -1152,7 +1096,6 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
             showNighttimeWarning: selectedRoute.showNighttimeWarning
         };
 
-        console.log('✅ Route(s) calculated successfully!');
         console.log(`📏 Distance: ${selectedRoute.distanceText}`);
         console.log(`⏱️ Duration: ${selectedRoute.durationText}`);
         console.log(`🛡️ Safety Score: ${selectedRoute.safetyScore}/10 (${selectedRoute.safetyLabel})`);
@@ -1165,7 +1108,7 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
 
         // Update UI with real data
         updateRouteDisplay();
-        updateSafetyDisplay();
+        updateSafetyDisplay(() => currentRouteData);
 
         // Add crime markers to map for SELECTED route only
         if (selectedRoute.rawCrimeData && selectedRoute.rawCrimeData.length > 0) {
@@ -1199,30 +1142,56 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
         // First pass: Draw the selected route
         routeOptions.forEach((routeOption, idx) => {
             const isSelected = (idx === selectedRouteIndex);
-            if (isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
-                const ombreLayer = drawOmbreRoute(
-                    map,
-                    routeOption.route.coordinates,
-                    routeOption.crimeSamples,
-                    0.8,  // opacity: selected
-                    null  // dashArray: solid
-                );
-                ombreRouteLayer = ombreLayer;
+            if (isSelected) {
+                if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+                    // Draw ombre route with crime data
+                    const ombreLayer = drawOmbreRoute(
+                        map,
+                        routeOption.route.coordinates,
+                        routeOption.crimeSamples,
+                        0.8,  // opacity: selected
+                        null  // dashArray: solid
+                    );
+                    ombreRouteLayer = ombreLayer;
+                } else {
+                    // Draw basic route (no crime data available)
+                    const basicLayer = drawBasicRoute(
+                        map,
+                        routeOption.route.coordinates,
+                        0.8,  // opacity: selected
+                        null,  // dashArray: solid
+                        '#4285f4'  // color: blue
+                    );
+                    ombreRouteLayer = basicLayer;
+                }
             }
         });
 
         // Second pass: Draw the alternative route (on top)
         routeOptions.forEach((routeOption, idx) => {
             const isSelected = (idx === selectedRouteIndex);
-            if (!isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
-                const ombreLayer = drawOmbreRoute(
-                    map,
-                    routeOption.route.coordinates,
-                    routeOption.crimeSamples,
-                    0.4,  // opacity: alternative
-                    '10, 10'  // dashArray: dashed
-                );
-                alternativeOmbreLayer = ombreLayer;
+            if (!isSelected) {
+                if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+                    // Draw ombre route with crime data
+                    const ombreLayer = drawOmbreRoute(
+                        map,
+                        routeOption.route.coordinates,
+                        routeOption.crimeSamples,
+                        0.4,  // opacity: alternative
+                        '10, 10'  // dashArray: dashed
+                    );
+                    alternativeOmbreLayer = ombreLayer;
+                } else {
+                    // Draw basic route (no crime data available)
+                    const basicLayer = drawBasicRoute(
+                        map,
+                        routeOption.route.coordinates,
+                        0.4,  // opacity: alternative (faded)
+                        '10, 10',  // dashArray: dashed
+                        '#4285f4'  // color: blue
+                    );
+                    alternativeOmbreLayer = basicLayer;
+                }
             }
         });
 
@@ -1243,6 +1212,24 @@ function calculateAndDisplayRoute(start, end, targetMap = null) {
 // ROUTE COMPARISON UI
 // ========================================
 
+/**
+ * Build and display the route comparison cards
+ *
+ * WHAT IT DOES:
+ * Creates the side-by-side route comparison cards that let users
+ * choose between Route 1 and Route 2. Each card shows distance,
+ * duration, safety score, and crime count.
+ *
+ * UI STRUCTURE:
+ * - Clears existing cards
+ * - Creates a card for each route in routeOptions[]
+ * - Highlights the currently selected route
+ * - Adds "Select Route" button click handlers
+ *
+ * DATA SOURCE: routeOptions array (populated by calculateAndDisplayRoute)
+ *
+ * CALLED BY: calculateAndDisplayRoute() after both routes are scored
+ */
 function updateRouteComparisonUI() {
     const comparisonContainer = document.getElementById('route-comparison-container');
 
@@ -1308,6 +1295,58 @@ function updateRouteComparisonUI() {
     });
 }
 
+/**
+ * Switches the selected route when user clicks on a different route option.
+ * This is called when user clicks "Route 1" or "Route 2" in the comparison cards.
+ *
+ * WHAT IT DOES:
+ * 1. Updates the selectedRouteIndex to the new route
+ * 2. Redraws both routes on the map:
+ *    - Selected route: solid line, full opacity (0.8)
+ *    - Alternative route: dashed line, faded opacity (0.4)
+ * 3. Updates all the global state (currentRoute, currentRouteData)
+ * 4. Updates all UI elements:
+ *    - Route comparison cards (highlights selected)
+ *    - Route info panel (distance, duration)
+ *    - Safety display (score, breakdown)
+ * 5. Updates crime markers to show crimes for the newly selected route
+ *
+ * VISUAL CHANGES:
+ * Before: Route 1 = solid, Route 2 = dashed
+ * After clicking Route 2: Route 2 = solid, Route 1 = dashed
+ *
+ * LAYER ORDER MATTERS:
+ * We draw the selected route FIRST (bottom layer), then the alternative SECOND (top layer).
+ * This ensures the dashed alternative line is visible on top of the solid selected line.
+ *
+ * STATE CHANGES:
+ * This function modifies these global variables:
+ * - selectedRouteIndex (which route is selected: 0 or 1)
+ * - currentRoute (the Leaflet route object)
+ * - currentRouteData (distance, duration, safety score, etc.)
+ * - ombreRouteLayer (the selected route's colored line)
+ * - alternativeOmbreLayer (the alternative route's dashed line)
+ * - crimeMarkerClusterGroup (crime markers for selected route)
+ *
+ * @param {number} newIndex - The index of the route to select (0 = first route, 1 = second route)
+ * @returns {void} Returns early if the route is already selected
+ *
+ * @example
+ * // User clicks on "Route 2" card:
+ * selectRoute(1);  // Switches from Route 1 to Route 2
+ *
+ * // User clicks on already-selected route:
+ * selectRoute(0);  // Returns early, does nothing
+ *
+ * @called-by updateRouteComparisonUI() - click event listener on route cards
+ * @calls drawOmbreRoute() - to redraw route with new styling
+ * @calls drawBasicRoute() - fallback if no crime data
+ * @calls updateRouteComparisonUI() - to update card highlighting
+ * @calls updateRouteInfo() - to update route info panel
+ * @calls updateRouteDisplay() - to update distance/duration display
+ * @calls updateSafetyDisplay() - to update safety score display
+ * @calls addCrimeMarkersToMap() - to show crimes for new route
+ */
 function selectRoute(newIndex) {
     if (newIndex === selectedRouteIndex) {
         return; // Already selected
@@ -1339,21 +1378,33 @@ function selectRoute(newIndex) {
     // First pass: Draw the selected route
     routeOptions.forEach((routeOption, idx) => {
         const isSelected = (idx === selectedRouteIndex);
-        if (isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+        if (isSelected) {
             const opacity = 0.8;
             const dashArray = null;
 
             console.log(`  - Route ${idx + 1}: SELECTED (opacity: ${opacity}, dashArray: ${dashArray}) [BOTTOM LAYER]`);
 
-            const ombreLayer = drawOmbreRoute(
-                routeMap,
-                routeOption.route.coordinates,
-                routeOption.crimeSamples,
-                opacity,
-                dashArray
-            );
-
-            ombreRouteLayer = ombreLayer;
+            if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+                // Draw ombre route with crime data
+                const ombreLayer = drawOmbreRoute(
+                    routeMap,
+                    routeOption.route.coordinates,
+                    routeOption.crimeSamples,
+                    opacity,
+                    dashArray
+                );
+                ombreRouteLayer = ombreLayer;
+            } else {
+                // Draw basic route (no crime data available)
+                const basicLayer = drawBasicRoute(
+                    routeMap,
+                    routeOption.route.coordinates,
+                    opacity,
+                    dashArray,
+                    '#4285f4'
+                );
+                ombreRouteLayer = basicLayer;
+            }
             console.log('    ✓ Stored as ombreRouteLayer (selected)');
         }
     });
@@ -1361,25 +1412,36 @@ function selectRoute(newIndex) {
     // Second pass: Draw the alternative route (on top)
     routeOptions.forEach((routeOption, idx) => {
         const isSelected = (idx === selectedRouteIndex);
-        if (!isSelected && routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+        if (!isSelected) {
             const opacity = 0.4;
             const dashArray = '10, 10';
 
             console.log(`  - Route ${idx + 1}: alternative (opacity: ${opacity}, dashArray: ${dashArray}) [TOP LAYER]`);
 
-            const ombreLayer = drawOmbreRoute(
-                routeMap,
-                routeOption.route.coordinates,
-                routeOption.crimeSamples,
-                opacity,
-                dashArray
-            );
-
-            alternativeOmbreLayer = ombreLayer;
+            if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
+                // Draw ombre route with crime data
+                const ombreLayer = drawOmbreRoute(
+                    routeMap,
+                    routeOption.route.coordinates,
+                    routeOption.crimeSamples,
+                    opacity,
+                    dashArray
+                );
+                alternativeOmbreLayer = ombreLayer;
+            } else {
+                // Draw basic route (no crime data available)
+                const basicLayer = drawBasicRoute(
+                    routeMap,
+                    routeOption.route.coordinates,
+                    opacity,
+                    dashArray,
+                    '#4285f4'
+                );
+                alternativeOmbreLayer = basicLayer;
+            }
             console.log('    ✓ Stored as alternativeOmbreLayer (alternative)');
         }
     });
-    console.log('✅ Route redraw complete');
 
     // No need to hide routing control lines - we disabled them with styles: []
 
@@ -1408,6 +1470,10 @@ function selectRoute(newIndex) {
         crimeSamples: selectedRoute.crimeSamples,
         showNighttimeWarning: selectedRoute.showNighttimeWarning
     };
+
+    // Update all safety score displays with new route data
+    updateRouteDisplay();
+    updateSafetyDisplay(() => currentRouteData);
 
     // Update crime markers on map for newly selected route
     if (selectedRoute.rawCrimeData && selectedRoute.rawCrimeData.length > 0) {
@@ -1463,9 +1529,23 @@ function updateRouteInfo(routeData) {
 // Note: Core utilities imported from utils.js
 // ========================================
 
-// Update route display with real data
+/**
+ * Update route information displays with current route data
+ *
+ * WHAT IT DOES:
+ * Syncs the UI elements (distance, duration, safety score) with the
+ * values stored in currentRouteData. Called whenever the selected
+ * route changes.
+ *
+ * ELEMENTS UPDATED:
+ * - #route-duration: Walking time on route results screen
+ * - #nav-distance: Distance on navigation screen
+ * - #nav-duration: Duration on navigation screen
+ * - #nav-safety-score: Safety score badge on navigation screen
+ *
+ * CALLED BY: selectRoute(), after route calculation completes
+ */
 function updateRouteDisplay() {
-    console.log('📊 Updating route display with real data');
 
     // Update route results screen (time)
     const routeDurationElement = document.getElementById('route-duration');
@@ -1497,1393 +1577,6 @@ function updateRouteDisplay() {
         console.log(`Updated nav safety score: ${currentRouteData.safetyScore.toFixed(1)} (${colorClass})`);
     }
 
-    console.log('✅ Route display updated');
-}
-
-// Update safety score display (UPDATED FOR PHASE 2B)
-function updateSafetyDisplay() {
-    console.log('🛡️ Updating safety display');
-
-    if (!currentRouteData.safetyScore) {
-        console.log('No safety data available');
-        return;
-    }
-
-    // Show the safety score display (was hidden initially)
-    const safetyScoreDisplay = document.getElementById('safety-score-display');
-    if (safetyScoreDisplay) {
-        safetyScoreDisplay.style.display = 'flex';
-    }
-
-    // Update score number
-    const scoreNumber = document.querySelector('.score-number');
-    if (scoreNumber) {
-        scoreNumber.textContent = currentRouteData.safetyScore.toFixed(1);
-        scoreNumber.className = `score-number score-${currentRouteData.safetyColor}`;
-    }
-
-    // Update label
-    const scoreSubLabel = document.querySelector('.score-sublabel');
-    if (scoreSubLabel) {
-        scoreSubLabel.textContent = currentRouteData.safetyLabel;
-    }
-
-    // Update breakdown
-    const breakdown = currentRouteData.safetyBreakdown;
-    if (breakdown) {
-        // Bars 1-4 are always the same
-        updateBreakdownItem('breakdown-length', 'Route Length', breakdown.routeLength.score);
-        updateBreakdownItem('breakdown-time', 'Time of Day', breakdown.timeOfDay.score);
-        updateBreakdownItem('breakdown-complexity', 'Route Simplicity', breakdown.complexity.score);
-        updateBreakdownItem('breakdown-road', 'Road Type', breakdown.roadType.score);
-
-        // Bar 5 changes based on crime data availability
-        if (breakdown.crimeData) {
-            // PHASE 2B: Show crime data in bar 5 (replaces Area Type)
-            updateBreakdownItem('breakdown-density', 'SF Crime Data (90 days)', breakdown.crimeData.score);
-        } else {
-            // PHASE 2A: Show area type in bar 5 (original)
-            updateBreakdownItem('breakdown-density', 'Area Type', breakdown.density.score);
-        }
-    }
-
-    // PHASE 2C: Update disclaimer and show/hide crime details button
-    const disclaimer = document.getElementById('safety-disclaimer');
-    const crimeDetailsBtn = document.getElementById('crime-details-btn-container');
-
-    if (currentRouteData.usingCrimeData) {
-        // Using real SF crime data
-        if (disclaimer) {
-            disclaimer.textContent = 'Safety score includes real crime data from San Francisco Police Department (last 90 days).';
-        }
-        // Show crime details button
-        if (crimeDetailsBtn) {
-            crimeDetailsBtn.style.display = 'block';
-        }
-    } else if (currentRouteData.inSanFrancisco) {
-        // In SF but crime data unavailable
-        if (disclaimer) {
-            disclaimer.textContent = 'Crime data temporarily unavailable. Score based on route characteristics.';
-        }
-        // Hide crime details button
-        if (crimeDetailsBtn) {
-            crimeDetailsBtn.style.display = 'none';
-        }
-    } else {
-        // Outside SF
-        if (disclaimer) {
-            disclaimer.textContent = 'San Francisco, CA used for testing. Other cities with crime data coming soon.';
-        }
-        // Hide crime details button
-        if (crimeDetailsBtn) {
-            crimeDetailsBtn.style.display = 'none';
-        }
-    }
-
-    // Show/hide nighttime warning banner
-    const warningBanner = document.getElementById('nighttime-warning-banner');
-    if (warningBanner) {
-        if (currentRouteData.showNighttimeWarning) {
-            warningBanner.style.display = 'flex';
-            console.log('⚠️ Nighttime warning banner displayed');
-        } else {
-            warningBanner.style.display = 'none';
-        }
-    }
-
-    console.log('✅ Safety display updated');
-}
-
-// Filter crimes to last 30 days for display
-function filterCrimesLast30Days(crimes) {
-    if (!crimes || crimes.length === 0) return [];
-
-    const now = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(now.getDate() - 30);
-
-    return crimes.filter(crime => {
-        const crimeDate = new Date(crime.incident_datetime);
-        return crimeDate >= thirtyDaysAgo;
-    });
-}
-
-// Group crimes by type and count occurrences
-function groupCrimesByType(crimes) {
-    const grouped = {};
-
-    crimes.forEach(crime => {
-        const category = crime.incident_category;
-        if (!grouped[category]) {
-            grouped[category] = 0;
-        }
-        grouped[category]++;
-    });
-
-    // Sort by count (descending)
-    return Object.entries(grouped)
-        .sort((a, b) => b[1] - a[1])
-        .reduce((obj, [key, value]) => {
-            obj[key] = value;
-            return obj;
-        }, {});
-}
-
-// Get severity level for a crime category
-function getCrimeSeverity(category) {
-    const weight = CRIME_WEIGHTS[category] || 1.0;
-
-    if (weight >= 3.0) return 'high';
-    if (weight >= 2.0) return 'medium';
-    return 'low';
-}
-
-// Toggle crime details expanded section
-function toggleCrimeDetails() {
-    const expandedSection = document.getElementById('crime-details-expanded');
-    const button = document.getElementById('more-info-btn');
-
-    if (expandedSection.style.display === 'none') {
-        expandedSection.style.display = 'block';
-        button.textContent = 'Less Info ▲';
-    } else {
-        expandedSection.style.display = 'none';
-        button.textContent = 'More Info ▼';
-    }
-}
-
-// Open crime details modal (PHASE 2C - UPDATED)
-function openCrimeDetailsModal() {
-    const breakdown = currentRouteData.safetyBreakdown;
-    if (!breakdown || !breakdown.crimeData) {
-        alert('Crime data not available');
-        return;
-    }
-
-    const crimeData = breakdown.crimeData;
-    const rawCrimes = currentRouteData.rawCrimeData || [];
-
-    // Filter to last 30 days for display
-    const last30DaysCrimes = filterCrimesLast30Days(rawCrimes);
-
-    // Group crimes by type
-    const crimesByType = groupCrimesByType(last30DaysCrimes);
-
-    // Categorize by severity
-    const highSeverityCrimes = {};
-    const mediumSeverityCrimes = {};
-    const lowSeverityCrimes = {};
-
-    let highCount = 0, mediumCount = 0, lowCount = 0;
-
-    Object.entries(crimesByType).forEach(([category, count]) => {
-        const severity = getCrimeSeverity(category);
-
-        if (severity === 'high') {
-            highSeverityCrimes[category] = count;
-            highCount += count;
-        } else if (severity === 'medium') {
-            mediumSeverityCrimes[category] = count;
-            mediumCount += count;
-        } else {
-            lowSeverityCrimes[category] = count;
-            lowCount += count;
-        }
-    });
-
-    // Update comparison text
-    const comparisonText = document.getElementById('crime-comparison-text');
-    if (comparisonText) {
-        comparisonText.textContent = crimeData.comparisonText;
-    }
-
-    // Update severity counts (30-day filtered data)
-    document.getElementById('high-severity-count').textContent = highCount;
-    document.getElementById('medium-severity-count').textContent = mediumCount;
-    document.getElementById('low-severity-count').textContent = lowCount;
-    document.getElementById('total-crimes-count').textContent = last30DaysCrimes.length;
-
-    // Update severity details (basic descriptions)
-    const highDetails = document.getElementById('high-severity-details');
-    const mediumDetails = document.getElementById('medium-severity-details');
-    const lowDetails = document.getElementById('low-severity-details');
-
-    if (highCount === 0) {
-        highDetails.textContent = 'No high-severity crimes found (last 30 days)';
-    } else {
-        highDetails.textContent = `Includes violent crimes (robbery, assault, homicide, etc.) - last 30 days`;
-    }
-
-    if (mediumCount === 0) {
-        mediumDetails.textContent = 'No medium-severity crimes found (last 30 days)';
-    } else {
-        mediumDetails.textContent = `Includes property crimes (burglary, vehicle theft, arson, etc.) - last 30 days`;
-    }
-
-    if (lowCount === 0) {
-        lowDetails.textContent = 'No low-severity crimes found (last 30 days)';
-    } else {
-        lowDetails.textContent = `Includes theft, vandalism, drug offenses, etc. - last 30 days`;
-    }
-
-    // Populate detailed breakdown by type
-    populateCrimeTypeBreakdown('high-severity-types', highSeverityCrimes);
-    populateCrimeTypeBreakdown('medium-severity-types', mediumSeverityCrimes);
-    populateCrimeTypeBreakdown('low-severity-types', lowSeverityCrimes);
-
-    // Reset expanded section to collapsed
-    document.getElementById('crime-details-expanded').style.display = 'none';
-    document.getElementById('more-info-btn').textContent = 'More Info ▼';
-
-    // Open the modal
-    openModal('crime-details-modal');
-}
-
-// Populate crime type breakdown section
-function populateCrimeTypeBreakdown(elementId, crimesObj) {
-    const container = document.getElementById(elementId);
-
-    if (!crimesObj || Object.keys(crimesObj).length === 0) {
-        container.innerHTML = '<div style="color: var(--gray-medium); font-style: italic;">No incidents in this category</div>';
-        return;
-    }
-
-    let html = '';
-    Object.entries(crimesObj).forEach(([category, count]) => {
-        html += `
-            <div class="crime-type-item">
-                <span class="crime-type-name">${category}</span>
-                <span class="crime-type-count">${count} incident${count > 1 ? 's' : ''}</span>
-            </div>
-        `;
-    });
-
-    container.innerHTML = html;
-}
-
-// Update individual breakdown item
-function updateBreakdownItem(id, label, score) {
-    const element = document.getElementById(id);
-    if (!element) return;
-
-    const labelElement = element.querySelector('.breakdown-label');
-    const fill = element.querySelector('.breakdown-fill');
-    const scoreDisplay = element.querySelector('.breakdown-score');
-
-    if (labelElement) {
-        labelElement.textContent = label;
-    }
-
-    if (fill) {
-        fill.style.width = `${score}%`;
-        // Color based on score
-        if (score >= 85) {
-            fill.className = 'breakdown-fill fill-excellent';
-        } else if (score >= 70) {
-            fill.className = 'breakdown-fill fill-good';
-        } else if (score >= 50) {
-            fill.className = 'breakdown-fill fill-fair';
-        } else {
-            fill.className = 'breakdown-fill fill-caution';
-        }
-    }
-
-    if (scoreDisplay) {
-        scoreDisplay.textContent = Math.round(score);
-    }
-}
-
-// ========================================
-// CRIME DATA FUNCTIONS (PHASE 2B)
-// ========================================
-
-// Check if a location is within San Francisco bounds
-function isInSanFrancisco(lat, lng) {
-    return lat >= SF_BOUNDS.south &&
-           lat <= SF_BOUNDS.north &&
-           lng >= SF_BOUNDS.west &&
-           lng <= SF_BOUNDS.east;
-}
-
-// Check if entire route is in San Francisco
-function isRouteInSanFrancisco(startLat, startLng, endLat, endLng) {
-    return isInSanFrancisco(startLat, startLng) &&
-           isInSanFrancisco(endLat, endLng);
-}
-
-// Generate cache key for crime data
-function getCrimesCacheKey(lat, lng) {
-    // Round to 2 decimal places (~0.7 mile grid)
-    // This creates cache zones to reduce API calls
-    const roundedLat = lat.toFixed(2);
-    const roundedLng = lng.toFixed(2);
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    return `crime_${roundedLat}_${roundedLng}_${today}`;
-}
-
-// Get cached crime data
-function getCachedCrimes(lat, lng) {
-    const key = getCrimesCacheKey(lat, lng);
-    const cached = crimeCache.get(key);
-
-    if (!cached) return null;
-
-    // Check if cache is still valid (24 hours)
-    const age = Date.now() - cached.timestamp;
-    if (age > CACHE_DURATION) {
-        crimeCache.delete(key);
-        return null;
-    }
-
-    return cached.data;
-}
-
-// Set cached crime data
-function setCachedCrimes(lat, lng, data) {
-    const key = getCrimesCacheKey(lat, lng);
-    crimeCache.set(key, {
-        data: data,
-        timestamp: Date.now()
-    });
-}
-
-// Query crimes near a specific location from SF Open Data API
-async function queryCrimesNearLocation(lat, lng, radiusMeters = CRIME_API.radiusMeters) {
-    // Check cache first
-    const cached = getCachedCrimes(lat, lng);
-    if (cached !== null) {
-        console.log(`📦 Using cached crime data for ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-        return cached;
-    }
-
-    try {
-        // Calculate date range (last 90 days)
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - CRIME_API.daysBack);
-
-        const startDateStr = startDate.toISOString().split('T')[0];
-
-        // Build API query URL
-        // SODA API uses $where with within_circle for geographic queries
-        const whereClause = `within_circle(point, ${lat}, ${lng}, ${radiusMeters}) AND incident_datetime > '${startDateStr}'`;
-        const selectFields = 'incident_category,incident_datetime,latitude,longitude';
-
-        const url = `${CRIME_API.baseUrl}?` +
-                    `$$app_token=${CRIME_API.appToken}&` +
-                    `$where=${encodeURIComponent(whereClause)}&` +
-                    `$select=${selectFields}&` +
-                    `$limit=1000`;
-
-        console.log(`🔍 Querying SF crime data near ${lat.toFixed(4)}, ${lng.toFixed(4)}...`);
-
-        const response = await fetch(url);
-
-        if (!response.ok) {
-            throw new Error(`Crime API returned ${response.status}`);
-        }
-
-        const crimes = await response.json();
-
-        console.log(`✅ Found ${crimes.length} crimes in the last ${CRIME_API.daysBack} days`);
-
-        // Cache the results
-        setCachedCrimes(lat, lng, crimes);
-
-        return crimes;
-
-    } catch (error) {
-        console.error('❌ Error querying crime data:', error);
-        return null; // Return null on error (will trigger fallback)
-    }
-}
-
-// Query crimes along entire route
-async function queryCrimesAlongRoute(routeCoordinates) {
-    if (!routeCoordinates || routeCoordinates.length === 0) {
-        console.log('⚠️ No route coordinates provided');
-        return null;
-    }
-
-    console.log('🗺️ Analyzing crime data along route...');
-
-    try {
-        // Sample points along the route (every ~0.15 miles - optimized)
-        const samplePoints = sampleRoutePoints(routeCoordinates, CRIME_API.sampleInterval);
-
-        console.log(`📍 Sampling ${samplePoints.length} points along route`);
-
-        // Query crimes near each sample point IN PARALLEL (optimized for speed)
-        console.log('🚀 Fetching crime data in parallel...');
-        const crimePromises = samplePoints.map(point =>
-            queryCrimesNearLocation(point.lat, point.lng)
-        );
-
-        // Wait for all API calls to complete
-        const crimeResults = await Promise.all(crimePromises);
-
-        // Check if any API call failed
-        if (crimeResults.some(result => result === null)) {
-            console.log('⚠️ One or more crime API calls failed - using fallback');
-            return null;
-        }
-
-        // Flatten results and remove duplicates
-        let allCrimes = [];
-        const crimeSets = new Set(); // Use Set to avoid duplicate crimes
-
-        crimeResults.forEach(crimes => {
-            crimes.forEach(crime => {
-                // Create unique ID from crime data
-                const crimeId = `${crime.incident_category}_${crime.incident_datetime}_${crime.latitude}_${crime.longitude}`;
-                if (!crimeSets.has(crimeId)) {
-                    crimeSets.add(crimeId);
-                    allCrimes.push(crime);
-                }
-            });
-        });
-
-        console.log(`✅ Total unique crimes found along route: ${allCrimes.length}`);
-
-        // Combine sample points with their crime data for ombre route coloring
-        const crimeSamples = samplePoints.map((point, index) => ({
-            lat: point.lat,
-            lng: point.lng,
-            crimes: crimeResults[index] || []
-        }));
-
-        return {
-            allCrimes: allCrimes,
-            crimeSamples: crimeSamples
-        };
-
-    } catch (error) {
-        console.error('❌ Error analyzing route crime data:', error);
-        return null;
-    }
-}
-
-// Sample points along route at regular intervals
-function sampleRoutePoints(coordinates, intervalMiles) {
-    const samplePoints = [];
-
-    // Always include start point
-    if (coordinates.length > 0) {
-        const start = coordinates[0];
-        samplePoints.push({ lat: start.lat, lng: start.lng });
-    }
-
-    // Sample intermediate points
-    let accumulatedDistance = 0;
-    let lastSampleDistance = 0;
-
-    for (let i = 1; i < coordinates.length; i++) {
-        const prev = coordinates[i - 1];
-        const curr = coordinates[i];
-
-        // Calculate distance between consecutive points
-        const segmentDistance = calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng);
-        accumulatedDistance += segmentDistance;
-
-        // Add sample point if we've traveled the interval distance
-        if (accumulatedDistance - lastSampleDistance >= intervalMiles) {
-            samplePoints.push({ lat: curr.lat, lng: curr.lng });
-            lastSampleDistance = accumulatedDistance;
-        }
-    }
-
-    // Always include end point
-    if (coordinates.length > 1) {
-        const end = coordinates[coordinates.length - 1];
-        samplePoints.push({ lat: end.lat, lng: end.lng });
-    }
-
-    return samplePoints;
-}
-
-// Calculate area baseline for relative crime scoring (3-mile radius)
-async function calculateAreaBaseline(midpointLat, midpointLng) {
-    console.log('📊 Calculating area baseline for comparison...');
-
-    try {
-        // Query crimes in 3-mile radius (city-wide comparison)
-        const radiusMeters = 3 * 1609.34; // 3 miles to meters
-
-        // Check cache first (use larger grid for baseline)
-        const cacheKey = `baseline_${midpointLat.toFixed(1)}_${midpointLng.toFixed(1)}`;
-        const cached = crimeCache.get(cacheKey);
-
-        if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
-            console.log('📦 Using cached baseline data');
-            return cached.data;
-        }
-
-        // Build API query for baseline area
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - CRIME_API.daysBack);
-        const startDateStr = startDate.toISOString().split('T')[0];
-
-        const whereClause = `within_circle(point, ${midpointLat}, ${midpointLng}, ${radiusMeters}) AND incident_datetime > '${startDateStr}'`;
-        const selectFields = 'incident_category,incident_datetime';
-
-        const url = `${CRIME_API.baseUrl}?` +
-                    `$$app_token=${CRIME_API.appToken}&` +
-                    `$where=${encodeURIComponent(whereClause)}&` +
-                    `$select=${selectFields}&` +
-                    `$limit=5000`; // Higher limit for baseline
-
-        const response = await fetch(url);
-
-        if (!response.ok) {
-            console.log('⚠️ Baseline query failed, using absolute scoring');
-            return null;
-        }
-
-        const crimes = await response.json();
-
-        console.log(`✅ Baseline: ${crimes.length} crimes in 3-mile radius`);
-
-        // Calculate baseline density (crimes per square mile)
-        const areaSqMiles = Math.PI * 3 * 3; // π * r²
-        const baselineDensity = crimes.length / areaSqMiles;
-
-        // Calculate weighted baseline
-        let weightedBaseline = 0;
-        crimes.forEach(crime => {
-            const weight = CRIME_WEIGHTS[crime.incident_category] || 1.0;
-            if (weight > 0) {
-                weightedBaseline += weight;
-            }
-        });
-
-        const baselineWeightedDensity = weightedBaseline / areaSqMiles;
-
-        const baselineData = {
-            totalCrimes: crimes.length,
-            density: baselineDensity,
-            weightedDensity: baselineWeightedDensity
-        };
-
-        // Cache the baseline
-        crimeCache.set(cacheKey, {
-            data: baselineData,
-            timestamp: Date.now()
-        });
-
-        console.log(`📊 Baseline weighted density: ${baselineWeightedDensity.toFixed(2)} crimes/sq mi`);
-
-        return baselineData;
-
-    } catch (error) {
-        console.error('❌ Error calculating baseline:', error);
-        return null;
-    }
-}
-
-// Score crime data with relative scoring (PHASE 2C - Graded Curve)
-function scoreCrimeData(crimes, routeLengthMiles, timeOfDay, areaBaseline = null) {
-    if (!crimes || crimes.length === 0) {
-        console.log('✅ No crimes found - excellent safety score');
-        return 100; // No crimes = perfect score
-    }
-
-    console.log(`🔍 Scoring ${crimes.length} crimes along route...`);
-
-    // Calculate weighted crime count
-    let weightedCrimeCount = 0;
-    const hour = timeOfDay || new Date().getHours();
-    const isNighttime = hour >= 20 || hour < 6;
-
-    // Count crimes by severity
-    let highSeverity = 0, mediumSeverity = 0, lowSeverity = 0;
-
-    crimes.forEach(crime => {
-        const category = crime.incident_category;
-        const weight = CRIME_WEIGHTS[category] || 1.0; // Default weight if category not in list
-
-        if (weight === 0) return; // Skip excluded categories
-
-        // Time-of-day multiplier
-        const crimeHour = new Date(crime.incident_datetime).getHours();
-        const crimeAtNight = crimeHour >= 20 || crimeHour < 6;
-
-        let timeMultiplier = 1.0;
-        if (isNighttime && crimeAtNight) {
-            timeMultiplier = 1.5; // Weight nighttime crimes higher for nighttime routes
-        } else if (!isNighttime && !crimeAtNight) {
-            timeMultiplier = 1.2; // Weight daytime crimes higher for daytime routes
-        }
-
-        const adjustedWeight = weight * timeMultiplier;
-        weightedCrimeCount += adjustedWeight;
-
-        // Track severity for breakdown
-        if (weight >= 3.0) highSeverity++;
-        else if (weight >= 2.0) mediumSeverity++;
-        else lowSeverity++;
-    });
-
-    console.log(`📊 Crime breakdown: ${highSeverity} high, ${mediumSeverity} medium, ${lowSeverity} low severity`);
-
-    // Calculate crimes per mile (normalize by route length)
-    const crimesPerMile = weightedCrimeCount / Math.max(routeLengthMiles, 0.5);
-
-    let score;
-    let comparisonText = '';
-    let percentDifference = 0;
-
-    // RELATIVE SCORING: Compare to area baseline if available
-    if (areaBaseline && areaBaseline.weightedDensity > 0) {
-        console.log(`📊 Using relative scoring (graded curve)`);
-        console.log(`   Route density: ${crimesPerMile.toFixed(2)} crimes/mile`);
-        console.log(`   Area baseline: ${areaBaseline.weightedDensity.toFixed(2)} crimes/sq mi`);
-
-        // Convert route crimes/mile to crimes/sq mile for comparison
-        // Approximate: assume route corridor is 0.1 mile wide (528 ft)
-        const routeDensitySqMi = crimesPerMile / 0.1;
-
-        // Calculate relative ratio
-        const relativeRatio = routeDensitySqMi / areaBaseline.weightedDensity;
-
-        // Calculate percentage difference
-        percentDifference = ((areaBaseline.weightedDensity - routeDensitySqMi) / areaBaseline.weightedDensity) * 100;
-
-        // Relative scoring: 100 - (ratio * 50)
-        // If route = baseline → ratio = 1.0 → score = 50
-        // If route < baseline (safer) → ratio < 1.0 → score > 50
-        // If route > baseline (worse) → ratio > 1.0 → score < 50
-        score = 100 - (relativeRatio * 50);
-
-        // Clamp to reasonable range
-        score = Math.max(10, Math.min(100, score));
-
-        // Generate comparison text
-        if (percentDifference > 15) {
-            comparisonText = `${Math.abs(percentDifference).toFixed(0)}% safer than area average`;
-        } else if (percentDifference < -15) {
-            comparisonText = `${Math.abs(percentDifference).toFixed(0)}% higher than area average`;
-        } else {
-            comparisonText = `Similar to area average`;
-        }
-
-        console.log(`🛡️ Relative crime score: ${score.toFixed(1)}/100 (${comparisonText})`);
-
-    } else {
-        // ABSOLUTE SCORING: Fallback if no baseline
-        console.log(`📊 Using absolute scoring (no baseline available)`);
-
-        if (crimesPerMile <= 5) {
-            // Linear scale: 0 crimes = 100, 5 crimes/mile = 70
-            score = 100 - (crimesPerMile * 6);
-        } else if (crimesPerMile <= 15) {
-            // Linear scale: 5 crimes/mile = 70, 15 crimes/mile = 40
-            score = 70 - ((crimesPerMile - 5) * 3);
-        } else {
-            // Logarithmic decline for very high crime
-            score = Math.max(20, 40 - Math.log10(crimesPerMile - 14) * 15);
-        }
-
-        score = Math.max(0, Math.min(100, score));
-        comparisonText = 'Absolute scoring (no baseline)';
-
-        console.log(`🛡️ Crime score: ${score.toFixed(1)}/100 (${crimesPerMile.toFixed(1)} weighted crimes/mile)`);
-    }
-
-    // Return detailed breakdown
-    return {
-        score: score,
-        totalCrimes: crimes.length,
-        highSeverity: highSeverity,
-        mediumSeverity: mediumSeverity,
-        lowSeverity: lowSeverity,
-        comparisonText: comparisonText,
-        percentDifference: percentDifference
-    };
-}
-
-// Analyze day vs night crime rates
-function analyzeDayNightCrimes(crimes, sunData) {
-    if (!crimes || crimes.length === 0 || !sunData) {
-        return {
-            daytimeCrimes: 0,
-            nighttimeCrimes: 0,
-            nighttimeIncreasePercent: 0
-        };
-    }
-
-    let daytimeCrimes = 0;
-    let nighttimeCrimes = 0;
-
-    // Get sunrise/sunset hours once (not per crime)
-    const sunriseHour = sunData.sunrise.getHours();
-    const sunsetHour = sunData.sunset.getHours();
-
-    crimes.forEach(crime => {
-        const crimeTime = new Date(crime.incident_datetime);
-        const crimeHour = crimeTime.getHours();
-
-        // Check if crime occurred at night (after sunset or before sunrise)
-        if (crimeHour >= sunsetHour || crimeHour < sunriseHour) {
-            nighttimeCrimes++;
-        } else {
-            daytimeCrimes++;
-        }
-    });
-
-    // Calculate percentage increase
-    let nighttimeIncreasePercent = 0;
-    if (daytimeCrimes > 0) {
-        // Normalize by hours (day vs night have different durations)
-        const dayHours = sunsetHour - sunriseHour;
-        const nightHours = 24 - dayHours;
-
-        const daytimeRate = daytimeCrimes / dayHours;
-        const nighttimeRate = nighttimeCrimes / nightHours;
-
-        nighttimeIncreasePercent = ((nighttimeRate - daytimeRate) / daytimeRate) * 100;
-    }
-
-    console.log(`📊 Day/Night Crime Analysis: ${daytimeCrimes} day, ${nighttimeCrimes} night (${nighttimeIncreasePercent.toFixed(0)}% increase at night)`);
-
-    return {
-        daytimeCrimes,
-        nighttimeCrimes,
-        nighttimeIncreasePercent
-    };
-}
-
-// Filter crimes to last 7 days and violent/theft categories only
-function filterRecentViolentCrimes(crimes) {
-    if (!crimes || crimes.length === 0) return [];
-
-    const now = new Date();
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(now.getDate() - 7);
-
-    // Violent crime categories (red markers)
-    const violentCategories = [
-        'Homicide',
-        'Robbery',
-        'Assault',
-        'Sex Offense',
-        'Human Trafficking',
-        'Weapon Offense'
-    ];
-
-    // Theft crime categories (orange markers)
-    const theftCategories = [
-        'Burglary',
-        'Motor Vehicle Theft',
-        'Larceny Theft'
-    ];
-
-    const targetCategories = [...violentCategories, ...theftCategories];
-
-    return crimes.filter(crime => {
-        // Check date (last 7 days)
-        const crimeDate = new Date(crime.incident_datetime);
-        if (crimeDate < sevenDaysAgo) return false;
-
-        // Check category (violent or theft)
-        return targetCategories.includes(crime.incident_category);
-    }).map(crime => ({
-        ...crime,
-        isViolent: violentCategories.includes(crime.incident_category)
-    }));
-}
-
-// Add crime markers to map with clustering
-function addCrimeMarkersToMap(map, crimes, route) {
-    if (!map || !crimes || crimes.length === 0) {
-        console.log('ℹ️ No recent violent crimes to display');
-        return null;
-    }
-
-    console.log(`🔴 Adding ${crimes.length} recent crime markers to map...`);
-
-    // Create marker cluster group
-    const crimeClusterGroup = L.markerClusterGroup({
-        maxClusterRadius: 50,
-        spiderfyOnMaxZoom: true,
-        showCoverageOnHover: false,
-        zoomToBoundsOnClick: true,
-        iconCreateFunction: function(cluster) {
-            const count = cluster.getChildCount();
-
-            // Determine size-based dimensions
-            let outerSize, innerSize, fontSize;
-            if (count > 10) {
-                outerSize = 50;
-                innerSize = 44;
-                fontSize = 16;
-            } else if (count > 5) {
-                outerSize = 40;
-                innerSize = 34;
-                fontSize = 14;
-            } else {
-                outerSize = 30;
-                innerSize = 24;
-                fontSize = 12;
-            }
-
-            return L.divIcon({
-                html: `
-                    <div style="
-                        width: ${outerSize}px;
-                        height: ${outerSize}px;
-                        background-color: rgba(255, 20, 147, 0.3);
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                    ">
-                        <div style="
-                            width: ${innerSize}px;
-                            height: ${innerSize}px;
-                            background-color: #dc143c;
-                            border-radius: 50%;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                        ">
-                            <span style="
-                                color: white;
-                                font-weight: 700;
-                                font-size: ${fontSize}px;
-                                text-align: center;
-                            ">${count}</span>
-                        </div>
-                    </div>
-                `,
-                className: 'crime-marker-cluster-custom',
-                iconSize: L.point(outerSize, outerSize)
-            });
-        }
-    });
-
-    // Get route coordinates for distance calculation
-    const routeCoords = route.coordinates || [];
-
-    crimes.forEach(crime => {
-        const lat = parseFloat(crime.latitude);
-        const lng = parseFloat(crime.longitude);
-
-        if (!lat || !lng) return;
-
-        // Calculate distance from route (find closest point)
-        let minDistance = Infinity;
-        routeCoords.forEach(coord => {
-            const dist = calculateDistance(lat, lng, coord.lat, coord.lng);
-            if (dist < minDistance) minDistance = dist;
-        });
-
-        // Create crime marker
-        const isViolent = crime.isViolent;
-        const markerColor = isViolent ? '#dc143c' : '#ed8936'; // Red for violent, orange for theft
-
-        const crimeIcon = L.divIcon({
-            className: 'crime-marker',
-            html: `<div style="background-color: ${markerColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-            iconSize: [12, 12],
-            iconAnchor: [6, 6]
-        });
-
-        const marker = L.marker([lat, lng], { icon: crimeIcon });
-
-        // Create popup content
-        const crimeDate = new Date(crime.incident_datetime);
-        const dateStr = crimeDate.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit'
-        });
-
-        const distanceStr = minDistance < 0.1
-            ? `${Math.round(minDistance * 5280)} ft from route`
-            : `${minDistance.toFixed(2)} mi from route`;
-
-        const popupContent = `
-            <div style="min-width: 150px;">
-                <strong style="color: ${markerColor};">${crime.incident_category}</strong><br>
-                <span style="font-size: 12px; color: #666;">${dateStr}</span><br>
-                <span style="font-size: 11px; color: #999;">${distanceStr}</span>
-            </div>
-        `;
-
-        marker.bindPopup(popupContent);
-        crimeClusterGroup.addLayer(marker);
-    });
-
-    map.addLayer(crimeClusterGroup);
-    console.log(`✅ Added ${crimes.length} crime markers with clustering`);
-
-    return crimeClusterGroup;
-}
-
-// Get color for route segment based on crime density
-function getSegmentColor(crimeCount) {
-    // Absolute scale: crimes per 0.15 mile segment
-    if (crimeCount === 0) return '#48bb78'; // Green - no crimes
-    if (crimeCount <= 2) return '#68d391'; // Light green - very few crimes
-    if (crimeCount <= 5) return '#ed8936'; // Orange - moderate crimes
-    if (crimeCount <= 10) return '#f56565'; // Light red - many crimes
-    return '#dc143c'; // Dark red - very high crime
-}
-
-// Draw ombre-colored route based on crime density
-function drawOmbreRoute(map, routeCoordinates, crimeSamples, opacity = 0.8, dashArray = null) {
-    if (!map || !routeCoordinates || routeCoordinates.length === 0) {
-        console.log('ℹ️ Cannot draw ombre route: missing data');
-        return null;
-    }
-
-    const routeType = dashArray ? 'alternative' : 'main';
-    console.log(`🎨 Drawing ${routeType} ombre route with ${crimeSamples.length} crime samples...`);
-    console.log(`   Parameters: opacity=${opacity}, dashArray=${dashArray}`);
-
-    const ombreLayerGroup = L.layerGroup();
-
-    // Create segments between sample points
-    for (let i = 0; i < crimeSamples.length - 1; i++) {
-        const currentSample = crimeSamples[i];
-        const nextSample = crimeSamples[i + 1];
-
-        // Get crime count for this segment
-        const crimeCount = currentSample.crimes ? currentSample.crimes.length : 0;
-        const segmentColor = getSegmentColor(crimeCount);
-
-        // Find route coordinates between these two sample points
-        const segmentCoords = [];
-        let startFound = false;
-
-        for (let j = 0; j < routeCoordinates.length; j++) {
-            const coord = routeCoordinates[j];
-            const distToCurrent = calculateDistance(
-                coord.lat, coord.lng,
-                currentSample.lat, currentSample.lng
-            );
-            const distToNext = calculateDistance(
-                coord.lat, coord.lng,
-                nextSample.lat, nextSample.lng
-            );
-
-            // Include points close to current sample or between current and next
-            if (distToCurrent < 0.01 || (startFound && distToNext > 0.01)) {
-                segmentCoords.push([coord.lat, coord.lng]);
-                if (!startFound) startFound = true;
-            }
-
-            // Stop when we reach the next sample
-            if (distToNext < 0.01) {
-                segmentCoords.push([coord.lat, coord.lng]);
-                break;
-            }
-        }
-
-        // If we didn't find route coords, just draw a line between samples
-        if (segmentCoords.length < 2) {
-            segmentCoords.push([currentSample.lat, currentSample.lng]);
-            segmentCoords.push([nextSample.lat, nextSample.lng]);
-        }
-
-        // Create polyline for this segment
-        const polylineOptions = {
-            color: segmentColor,
-            weight: 6,
-            opacity: opacity,  // Use parameter
-            lineJoin: 'round',
-            lineCap: 'round'
-        };
-
-        if (dashArray) {
-            polylineOptions.dashArray = dashArray;  // Add if provided
-        }
-
-        const polyline = L.polyline(segmentCoords, polylineOptions);
-
-        ombreLayerGroup.addLayer(polyline);
-    }
-
-    ombreLayerGroup.addTo(map);
-    console.log(`✅ Ombre route drawn with ${crimeSamples.length - 1} colored segments`);
-
-    return ombreLayerGroup;
-}
-
-// ========================================
-// SAFETY SCORING ALGORITHM (PHASE 2)
-// ========================================
-
-// Main safety scoring function (UPDATED FOR PHASE 2B)
-async function calculateSafetyScore(route, startLocation, endLocation) {
-    console.log('🛡️ Calculating safety score...');
-
-    const distanceMiles = metersToMiles(route.summary.totalDistance);
-    const hour = new Date().getHours();
-
-    // Check if route is in San Francisco
-    const inSF = isRouteInSanFrancisco(
-        startLocation.lat, startLocation.lng,
-        endLocation.lat, endLocation.lng
-    );
-
-    let crimeScore = null;
-    let crimeData = null;
-    let crimeBreakdown = null;
-    let areaBaseline = null;
-    let usingCrimeData = false;
-    let crimeSamples = null; // Crime samples for ombre route coloring
-
-    // PHASE 2C: Try to get real crime data if in San Francisco
-    if (inSF) {
-        console.log('📍 Route is in San Francisco - querying crime data...');
-
-        try {
-            const crimeResult = await queryCrimesAlongRoute(route.coordinates);
-
-            if (crimeResult !== null) {
-                crimeData = crimeResult.allCrimes; // Extract allCrimes array
-                crimeSamples = crimeResult.crimeSamples; // Extract crime samples for ombre route
-
-                // Calculate route midpoint for baseline
-                const midLat = (startLocation.lat + endLocation.lat) / 2;
-                const midLng = (startLocation.lng + endLocation.lng) / 2;
-
-                // Get area baseline for relative scoring
-                areaBaseline = await calculateAreaBaseline(midLat, midLng);
-
-                // Score crime data with baseline
-                crimeBreakdown = scoreCrimeData(crimeData, distanceMiles, hour, areaBaseline);
-                crimeScore = crimeBreakdown.score;
-                usingCrimeData = true;
-                console.log('✅ Using real SF crime data for scoring');
-            } else {
-                console.log('⚠️ Crime API unavailable - using fallback algorithm');
-            }
-        } catch (error) {
-            console.error('❌ Error getting crime data:', error);
-            console.log('⚠️ Falling back to Phase 2A algorithm');
-        }
-    } else {
-        console.log('ℹ️ Route outside San Francisco - using standard algorithm');
-    }
-
-    // Determine location for sunset/sunrise (priority: user location → start location)
-    const locationForSunset = currentUserLocation || startLocation;
-
-    // Get sunset/sunrise data for nighttime warning
-    let sunData = null;
-    let showNighttimeWarning = false;
-
-    if (locationForSunset) {
-        sunData = await getSunriseSunset(locationForSunset.lat, locationForSunset.lng);
-    }
-
-    // Calculate other factor scores (0-100)
-    const lengthScore = scoreRouteLength(distanceMiles);
-    const timeScore = await scoreTimeOfDay(locationForSunset); // Now async with location
-    const complexityScore = scoreRouteComplexity(route);
-    const roadTypeScore = scoreRoadType(route);
-
-    // Analyze day/night crimes and check if warning should be shown
-    if (usingCrimeData && crimeData && sunData) {
-        const dayNightAnalysis = analyzeDayNightCrimes(crimeData, sunData);
-        const now = new Date();
-        const isNighttime = isAfterSunset(now, sunData.sunset);
-
-        // Show warning if: currently nighttime AND 25%+ crime increase at night
-        if (isNighttime && dayNightAnalysis.nighttimeIncreasePercent >= 25) {
-            showNighttimeWarning = true;
-            console.log(`⚠️ Nighttime warning triggered: ${dayNightAnalysis.nighttimeIncreasePercent.toFixed(0)}% crime increase at night`);
-        }
-    }
-
-    let totalScore;
-    let breakdown;
-
-    if (usingCrimeData) {
-        // PHASE 2B: New weighted formula with crime data
-        totalScore = (crimeScore * 0.50) +           // Crime data - 50%
-                     (timeScore * 0.20) +            // Time of day - 20%
-                     (lengthScore * 0.10) +          // Route length - 10%
-                     (complexityScore * 0.10) +      // Complexity - 10%
-                     (roadTypeScore * 0.10);         // Road type - 10%
-
-        breakdown = {
-            crimeData: {
-                score: crimeScore,
-                weight: 50,
-                count: crimeData.length,
-                highSeverity: crimeBreakdown.highSeverity,
-                mediumSeverity: crimeBreakdown.mediumSeverity,
-                lowSeverity: crimeBreakdown.lowSeverity,
-                comparisonText: crimeBreakdown.comparisonText,
-                percentDifference: crimeBreakdown.percentDifference
-            },
-            timeOfDay: { score: timeScore, weight: 20 },
-            routeLength: { score: lengthScore, weight: 10 },
-            complexity: { score: complexityScore, weight: 10 },
-            roadType: { score: roadTypeScore, weight: 10 }
-        };
-    } else {
-        // PHASE 2A: Fallback to original algorithm (no crime data)
-        const densityScore = scorePopulationDensity(startLocation, endLocation);
-
-        totalScore = (lengthScore * 0.30) +
-                     (timeScore * 0.25) +
-                     (complexityScore * 0.20) +
-                     (roadTypeScore * 0.15) +
-                     (densityScore * 0.10);
-
-        breakdown = {
-            routeLength: { score: lengthScore, weight: 30 },
-            timeOfDay: { score: timeScore, weight: 25 },
-            complexity: { score: complexityScore, weight: 20 },
-            roadType: { score: roadTypeScore, weight: 15 },
-            density: { score: densityScore, weight: 10 }
-        };
-    }
-
-    // Convert to 0-10 scale
-    const finalScore = (totalScore / 10).toFixed(1);
-
-    console.log(`✅ Safety score calculated: ${finalScore}/10 (${getSafetyLabel(finalScore)})`);
-
-    return {
-        score: parseFloat(finalScore),
-        label: getSafetyLabel(finalScore),
-        color: getSafetyColor(finalScore),
-        breakdown: breakdown,
-        usingCrimeData: usingCrimeData,
-        inSanFrancisco: inSF,
-        rawCrimeData: crimeData, // Store raw crime array for detailed analysis
-        crimeSamples: crimeSamples, // Crime samples for ombre route coloring
-        showNighttimeWarning: showNighttimeWarning // Nighttime warning flag
-    };
-}
-
-// ========================================
-// SUNSET/SUNRISE API FUNCTIONS
-// ========================================
-
-// Get cache key for sunset data
-function getSunsetCacheKey(lat, lng) {
-    const roundedLat = lat.toFixed(2);
-    const roundedLng = lng.toFixed(2);
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    return `sunset_${roundedLat}_${roundedLng}_${today}`;
-}
-
-// Fetch sunset/sunrise times for a location
-async function getSunriseSunset(lat, lng) {
-    // Check cache first
-    const cacheKey = getSunsetCacheKey(lat, lng);
-    const cached = sunsetCache.get(cacheKey);
-
-    if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
-        console.log(`📦 Using cached sunset data for ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-        return cached.data;
-    }
-
-    try {
-        const url = `${SUNSET_API.baseUrl}?lat=${lat}&lng=${lng}&date=today&formatted=0`;
-        console.log(`🌅 Fetching sunset/sunrise times for ${lat.toFixed(4)}, ${lng.toFixed(4)}...`);
-
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Sunset API returned ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (data.status !== 'OK') {
-            throw new Error('Sunset API error');
-        }
-
-        // Parse times (API returns ISO 8601 UTC times)
-        const sunData = {
-            sunrise: new Date(data.results.sunrise),
-            sunset: new Date(data.results.sunset),
-            solarNoon: new Date(data.results.solar_noon)
-        };
-
-        // Cache the results
-        sunsetCache.set(cacheKey, {
-            data: sunData,
-            timestamp: Date.now()
-        });
-
-        console.log(`✅ Sunset: ${sunData.sunset.toLocaleTimeString()}, Sunrise: ${sunData.sunrise.toLocaleTimeString()}`);
-
-        return sunData;
-
-    } catch (error) {
-        console.error('❌ Error fetching sunset data:', error);
-        return null; // Return null to trigger fallback
-    }
-}
-
-// Check if current time is after sunset
-function isAfterSunset(currentTime, sunset) {
-    return currentTime >= sunset;
-}
-
-// Check if current time is before sunrise
-function isBeforeSunrise(currentTime, sunrise) {
-    return currentTime < sunrise;
-}
-
-// Check if within X hours of sunset (for dusk detection)
-function isNearSunset(currentTime, sunset, hours = 2) {
-    const timeDiff = currentTime - sunset;
-    const hoursDiff = timeDiff / (1000 * 60 * 60); // Convert ms to hours
-    return hoursDiff >= 0 && hoursDiff <= hours;
-}
-
-// ========================================
-// SAFETY SCORING FUNCTIONS
-// ========================================
-
-// Score based on route length (shorter is safer)
-function scoreRouteLength(miles) {
-    if (miles < 0.5) return 100;
-    if (miles < 1.0) return 90;
-    if (miles < 2.0) return 75;
-    if (miles < 5.0) return 50;
-    return 30;
-}
-
-// Score based on time of day (daylight is safer) - UPDATED with dynamic sunset/sunrise
-async function scoreTimeOfDay(location) {
-    const now = new Date();
-
-    // Try to get dynamic sunset/sunrise times
-    if (location && location.lat && location.lng) {
-        try {
-            const sunData = await getSunriseSunset(location.lat, location.lng);
-
-            if (sunData) {
-                // Successfully got sunset data - use dynamic scoring
-                const afterSunset = isAfterSunset(now, sunData.sunset);
-                const beforeSunrise = isBeforeSunrise(now, sunData.sunrise);
-                const nearSunset = isNearSunset(now, sunData.sunset, 2);
-
-                if ((afterSunset && beforeSunrise) || beforeSunrise) {
-                    // Nighttime (after sunset or before sunrise)
-                    return 40;
-                } else if (nearSunset) {
-                    // Dusk (within 2 hours after sunset)
-                    return 70;
-                } else {
-                    // Daytime
-                    return 100;
-                }
-            }
-        } catch (error) {
-            console.log('⚠️ Sunset API unavailable, using fallback hours');
-        }
-    }
-
-    // FALLBACK: Use hardcoded hours (6am-8pm = day)
-    const hour = now.getHours();
-
-    if (hour >= 6 && hour < 20) return 100;  // 6am - 8pm: Daylight
-    if (hour >= 20 && hour < 22) return 70;  // 8pm - 10pm: Dusk
-    return 40;  // 10pm - 6am: Night
-}
-
-// Score based on route complexity (fewer turns is safer)
-function scoreRouteComplexity(route) {
-    const instructions = route.instructions || [];
-    const turnCount = instructions.filter(inst => {
-        const type = inst.type;
-        // Count actual turns, not "continue straight"
-        return type !== 'Head' && type !== 'Continue' && type !== 'Arrive';
-    }).length;
-
-    if (turnCount <= 3) return 100;
-    if (turnCount <= 7) return 80;
-    if (turnCount <= 12) return 60;
-    return 40;
-}
-
-// Score based on road types (major roads safer than alleys)
-function scoreRoadType(route) {
-    // OSRM doesn't always provide detailed road classification
-    // Use heuristic based on road names
-    const instructions = route.instructions || [];
-    let majorRoadCount = 0;
-    let totalRoads = instructions.length || 1;
-
-    instructions.forEach(inst => {
-        const roadName = inst.road || inst.name || '';
-
-        // Heuristic: Major roads often have these keywords or patterns
-        if (roadName.match(/(Avenue|Boulevard|Highway|Street|Road|Drive|Way|Parkway)/i)) {
-            majorRoadCount++;
-        }
-    });
-
-    const majorRoadPercentage = (majorRoadCount / totalRoads) * 100;
-
-    if (majorRoadPercentage >= 80) return 100;
-    if (majorRoadPercentage >= 60) return 85;
-    if (majorRoadPercentage >= 40) return 70;
-    return 50;
-}
-
-// Score based on population density (urban is safer - more people)
-function scorePopulationDensity(startLocation, endLocation) {
-    // Analyze address components to determine area type
-    const checkAddress = (location) => {
-        if (!location || !location.name) return 'suburban';
-
-        const address = location.name.toLowerCase();
-
-        // Urban indicators
-        if (address.match(/(downtown|city center|central|metro|manhattan|brooklyn|bronx)/i)) {
-            return 'urban';
-        }
-
-        // Suburban indicators
-        if (address.match(/(suburb|residential|neighborhood)/i)) {
-            return 'suburban';
-        }
-
-        // Rural indicators
-        if (address.match(/(rural|country|village|farm|remote)/i)) {
-            return 'rural';
-        }
-
-        return 'suburban'; // Default
-    };
-
-    const startType = checkAddress(startLocation);
-    const endType = checkAddress(endLocation);
-
-    // Use the lower score of the two
-    const scores = { urban: 100, suburban: 70, rural: 50 };
-    return Math.min(scores[startType], scores[endType]);
-}
-
-// Get safety label from score
-function getSafetyLabel(score) {
-    score = parseFloat(score);
-    if (score >= 8.5) return 'Excellent';
-    if (score >= 7.0) return 'Good';
-    if (score >= 5.0) return 'Fair';
-    return 'Caution';
-}
-
-// Get color class from score
-function getSafetyColor(score) {
-    score = parseFloat(score);
-    if (score >= 8.5) return 'excellent';
-    if (score >= 7.0) return 'good';
-    if (score >= 5.0) return 'fair';
-    return 'caution';
 }
 
 // ========================================
@@ -2891,6 +1584,33 @@ function getSafetyColor(score) {
 // ========================================
 
 // Check if user is at the start point (for preview vs live mode detection)
+/**
+ * Check if user is at the route's starting point
+ *
+ * WHAT IT DOES:
+ * Uses GPS to check if the user is physically near the starting location.
+ * This determines whether to use "Live Mode" (real GPS tracking) or
+ * "Preview Mode" (manual step navigation).
+ *
+ * HOW IT WORKS:
+ * 1. Requests user's current GPS position
+ * 2. Calculates distance to the selected start point
+ * 3. If within 100 feet: returns true (Live Mode)
+ * 4. If farther away: returns false (Preview Mode)
+ *
+ * CALLED BY: startNavigation()
+ *
+ * @returns {Promise<boolean>} True if user is at start point (within 100 feet)
+ *
+ * @example
+ * // User clicks "Start Navigation"
+ * const atStart = await checkIfAtStartPoint();
+ * if (atStart) {
+ *     // Enable GPS tracking (Live Mode)
+ * } else {
+ *     // Use manual step buttons (Preview Mode)
+ * }
+ */
 async function checkIfAtStartPoint() {
     return new Promise((resolve) => {
         // Check if geolocation is supported
@@ -2938,7 +1658,36 @@ async function checkIfAtStartPoint() {
     });
 }
 
-// Start navigation mode
+/**
+ * Start turn-by-turn navigation mode
+ *
+ * WHAT IT DOES:
+ * This is the main entry point for navigation. When the user clicks
+ * "Start Navigation", this function sets up everything needed for
+ * turn-by-turn directions.
+ *
+ * NAVIGATION MODES:
+ * - LIVE MODE: User is at the start point → GPS tracking is active
+ * - PREVIEW MODE: User is far from start → Manual "Next/Previous" buttons
+ *
+ * HOW IT WORKS:
+ * 1. Checks if a route exists (shows error if not)
+ * 2. Detects if user is at start point (determines mode)
+ * 3. Sets up navigation state variables
+ * 4. Navigates to the navigation screen
+ * 5. Triggers map initialization sequence
+ *
+ * STATE CHANGES:
+ * - isNavigating = true
+ * - isPreviewMode = true/false (based on location)
+ * - currentStepIndex = 0
+ * - destinationLocation = selectedDestination
+ *
+ * CALLED WHEN: User clicks "Start Navigation" button on route results screen
+ *
+ * @async
+ * @returns {Promise<void>}
+ */
 async function startNavigation() {
     console.log('🧭 Starting navigation...');
 
@@ -2970,7 +1719,28 @@ async function startNavigation() {
     }, 300); // Give screen time to render and DOM to update
 }
 
-// Initialize navigation in proper sequence
+/**
+ * Initialize navigation components in the correct order
+ *
+ * WHAT IT DOES:
+ * Sets up the navigation map and route display in a careful sequence
+ * to ensure everything loads properly. Uses timeouts to wait for
+ * DOM and map tiles to be ready.
+ *
+ * SEQUENCE:
+ * 1. Initialize the navigation map (creates Leaflet map)
+ * 2. Wait 400ms for map container to stabilize
+ * 3. Display the route on the navigation map
+ * 4. Wait 800ms for route to be calculated
+ * 5. Start GPS tracking (if in Live Mode)
+ *
+ * WHY THE DELAYS:
+ * - Maps need their container fully rendered before initialization
+ * - OSRM route calculation is asynchronous and takes time
+ * - Rushing causes "Map container not found" errors
+ *
+ * CALLED BY: startNavigation() after screen transition
+ */
 function initializeNavigationSequence() {
     console.log('🔄 Initializing navigation sequence...');
 
@@ -3009,9 +1779,27 @@ function initializeNavigationSequence() {
     }, 400); // Wait for map tiles to load and container to stabilize
 }
 
-// Start GPS tracking after map is ready
+/**
+ * Complete navigation setup after the map is ready
+ *
+ * WHAT IT DOES:
+ * Final step in navigation initialization. Verifies that route steps
+ * are available, starts GPS tracking (if in Live Mode), and shows
+ * the first turn-by-turn instruction.
+ *
+ * PRECONDITIONS:
+ * - Navigation map must be initialized
+ * - Route must be displayed and calculated
+ * - routeSteps array should be populated by OSRM
+ *
+ * ACTIONS:
+ * 1. Verifies routeSteps are available (shows error if not)
+ * 2. Starts GPS tracking in Live Mode (skips in Preview Mode)
+ * 3. Updates navigation UI with first instruction
+ *
+ * CALLED BY: initializeNavigationSequence() via setTimeout
+ */
 function startNavigationAfterMapReady() {
-    console.log('✅ Map ready...');
 
     if (routeSteps.length === 0) {
         console.error('❌ Route steps not available');
@@ -3033,10 +1821,36 @@ function startNavigationAfterMapReady() {
     // Update UI with first instruction
     updateNavigationUI();
 
-    console.log('✅ Navigation started successfully');
 }
 
-// Start GPS tracking with watchPosition
+/**
+ * Start continuous GPS tracking for live navigation
+ *
+ * WHAT IT DOES:
+ * Uses the browser's geolocation API to continuously track the user's
+ * position. Each position update triggers navigation updates.
+ *
+ * HOW IT WORKS:
+ * - Uses navigator.geolocation.watchPosition() for continuous updates
+ * - Each GPS update triggers updateNavigationPosition()
+ * - Stores the watch ID in navigationWatchId for later cleanup
+ *
+ * GPS OPTIONS:
+ * - enableHighAccuracy: true (uses GPS, not just WiFi)
+ * - timeout: 10000ms (10 seconds to get a fix)
+ * - maximumAge: 0 (always get fresh position, no caching)
+ *
+ * ERROR HANDLING:
+ * - Permission denied: Ends navigation with alert
+ * - Position unavailable: Shows status message
+ * - Timeout: Shows status message
+ *
+ * STATE CHANGES:
+ * - navigationWatchId = watch ID (for cleanup)
+ * - currentUserPosition = updated on each GPS fix
+ *
+ * CALLED BY: startNavigationAfterMapReady() (only in Live Mode)
+ */
 function startGPSTracking() {
     console.log('📍 Starting GPS tracking...');
 
@@ -3085,10 +1899,25 @@ function startGPSTracking() {
         }
     );
 
-    console.log('✅ GPS tracking started');
 }
 
-// Update navigation position (called on each GPS update)
+/**
+ * Handle GPS position updates during navigation
+ *
+ * WHAT IT DOES:
+ * This is called every time the GPS reports a new position. It updates
+ * the map, checks if the user has reached the next turn, and detects
+ * if the user has gone off-route.
+ *
+ * ACTIONS ON EACH GPS UPDATE:
+ * 1. Updates the user's position marker on the map
+ * 2. Calculates distance to the next turn/step
+ * 3. If within 50 feet of next step → advances to next instruction
+ * 4. Checks if user is off-route (>150 feet from route)
+ * 5. Updates the navigation UI with current instruction
+ *
+ * CALLED BY: GPS watchPosition callback (on each position update)
+ */
 function updateNavigationPosition() {
     if (!isNavigating || !currentUserPosition) return;
 
@@ -3126,7 +1955,20 @@ function updateNavigationPosition() {
     updateNavigationUI();
 }
 
-// Advance to next navigation step
+/**
+ * Move to the next turn-by-turn instruction
+ *
+ * WHAT IT DOES:
+ * Increments the current step counter and updates the UI. If this was
+ * the last step, triggers the arrival celebration.
+ *
+ * CALLED BY:
+ * - updateNavigationPosition() when user reaches a waypoint
+ * - nextStep() for manual navigation in Preview Mode
+ *
+ * STATE CHANGES:
+ * - currentStepIndex++ (moves to next instruction)
+ */
 function advanceToNextStep() {
     currentStepIndex++;
 
@@ -3141,7 +1983,16 @@ function advanceToNextStep() {
     updateNavigationUI();
 }
 
-// Manual step navigation for Preview Mode
+/**
+ * Manual "Next Step" button for Preview Mode
+ *
+ * WHAT IT DOES:
+ * Allows users to manually step through navigation instructions when
+ * they're not physically at the route (Preview Mode). Only works in
+ * Preview Mode - does nothing in Live Mode.
+ *
+ * CALLED WHEN: User clicks "Next" button in navigation screen (Preview Mode only)
+ */
 function nextStep() {
     if (!isPreviewMode) return; // Only works in preview mode
 
@@ -3152,6 +2003,15 @@ function nextStep() {
     }
 }
 
+/**
+ * Manual "Previous Step" button for Preview Mode
+ *
+ * WHAT IT DOES:
+ * Allows users to go back to a previous instruction when previewing
+ * the route. Only works in Preview Mode - does nothing in Live Mode.
+ *
+ * CALLED WHEN: User clicks "Previous" button in navigation screen (Preview Mode only)
+ */
 function previousStep() {
     if (!isPreviewMode) return; // Only works in preview mode
 
@@ -3162,7 +2022,21 @@ function previousStep() {
     }
 }
 
-// Check if user is off-route
+/**
+ * Detect if user has strayed too far from the route
+ *
+ * WHAT IT DOES:
+ * Calculates the user's distance from the route line. If they've
+ * wandered more than 150 feet away, triggers route recalculation.
+ *
+ * HOW IT WORKS:
+ * 1. Uses calculateDistanceToPolyline() to find nearest point on route
+ * 2. If distance > 150 feet, calls recalculateRoute()
+ *
+ * OFF-ROUTE THRESHOLD: 150 feet
+ *
+ * CALLED BY: updateNavigationPosition() on each GPS update
+ */
 function checkIfOffRoute() {
     if (!currentUserPosition || !routeCoordinates || routeCoordinates.length === 0) {
         return;
@@ -3186,7 +2060,33 @@ function checkIfOffRoute() {
     }
 }
 
-// Recalculate route from current position
+/**
+ * Recalculate the route from the user's current position
+ *
+ * WHAT IT DOES:
+ * When the user goes off-route, this creates a new route from their
+ * current GPS position to the original destination. Shows "Recalculating..."
+ * status while working.
+ *
+ * HOW IT WORKS:
+ * 1. Sets isRecalculating = true to prevent multiple calls
+ * 2. Creates new start waypoint from currentUserPosition
+ * 3. Removes old routing control from map
+ * 4. Creates new Leaflet Routing control to destination
+ * 5. On route found: updates routeSteps, resets currentStepIndex
+ *
+ * GUARDS:
+ * - Returns immediately if already recalculating
+ * - Uses isRecalculating flag to prevent duplicate calls
+ *
+ * STATE CHANGES:
+ * - isRecalculating = true (then false when done)
+ * - currentRoute = new route
+ * - routeSteps = new steps
+ * - currentStepIndex = 0
+ *
+ * CALLED BY: checkIfOffRoute() when user is >150 feet from route
+ */
 function recalculateRoute() {
     if (isRecalculating) return;
 
@@ -3255,7 +2155,6 @@ function recalculateRoute() {
         updateNavigationStatus('ACTIVE ROUTE', true);
         updateNavigationUI();
 
-        console.log('✅ Route recalculated successfully');
     });
 
     routingControl.on('routingerror', function(e) {
@@ -3265,7 +2164,23 @@ function recalculateRoute() {
     });
 }
 
-// Update navigation map with current position
+/**
+ * Update the navigation map with user's current GPS position
+ *
+ * WHAT IT DOES:
+ * Moves the blue position marker to the user's current location and
+ * optionally rotates the map based on compass heading.
+ *
+ * VISUAL UPDATES:
+ * 1. Removes old position marker
+ * 2. Creates new blue pulsing marker at current position
+ * 3. Rotates map pane if heading data available
+ * 4. Pans map to keep user centered (without zoom change)
+ *
+ * DATA SOURCE: currentUserPosition (from GPS watchPosition)
+ *
+ * CALLED BY: updateNavigationPosition() on each GPS update
+ */
 function updateNavigationMap() {
     if (!navigationMap || !currentUserPosition) return;
 
@@ -3300,7 +2215,29 @@ function updateNavigationMap() {
     navigationMap.panTo([currentUserPosition.lat, currentUserPosition.lng]);
 }
 
-// Update navigation UI elements
+/**
+ * Update all navigation screen UI elements
+ *
+ * WHAT IT DOES:
+ * Updates the turn-by-turn instruction display, step counter,
+ * distance to next turn, and preview mode buttons.
+ *
+ * MODE-SPECIFIC BEHAVIOR:
+ * - PREVIEW MODE: Shows step counter and prev/next buttons
+ * - LIVE MODE: Shows distance calculated from GPS, hides buttons
+ *
+ * ELEMENTS UPDATED:
+ * - #nav-status-text: "ROUTE PREVIEW" or "ACTIVE ROUTE"
+ * - #step-counter: "Step 3 of 12" (preview mode only)
+ * - #btn-prev-step, #btn-next-step: Visible in preview mode
+ * - #instruction-distance: Distance to next turn
+ * - #instruction-current: Current instruction text
+ * - #instruction-next: Upcoming instruction text
+ *
+ * DATA SOURCE: routeSteps[], currentStepIndex, currentUserPosition
+ *
+ * CALLED BY: GPS updates, nextStep(), previousStep(), advanceToNextStep()
+ */
 function updateNavigationUI() {
     if (!isNavigating) return;
 
@@ -3387,7 +2324,22 @@ function updateNavigationUI() {
     updateNavigationStats();
 }
 
-// Update navigation stats (remaining distance/time)
+/**
+ * Update remaining distance and time estimates during navigation
+ *
+ * WHAT IT DOES:
+ * Calculates straight-line distance from current position to destination
+ * and estimates remaining walking time at 3 mph.
+ *
+ * NOTE: Uses straight-line distance, not route distance. This is a
+ * simplification - actual remaining route distance would be more accurate.
+ *
+ * ELEMENTS UPDATED:
+ * - #nav-distance: Remaining distance (e.g., "0.3 mi")
+ * - #nav-duration: Estimated time (e.g., "6 min")
+ *
+ * CALLED BY: updateNavigationUI()
+ */
 function updateNavigationStats() {
     // Calculate remaining distance from current position to destination
     if (currentUserPosition && destinationLocation) {
@@ -3416,7 +2368,18 @@ function updateNavigationStats() {
     }
 }
 
-// Update navigation status indicator
+/**
+ * Update the navigation status banner text and indicator
+ *
+ * WHAT IT DOES:
+ * Changes the status text (e.g., "Recalculating...", "ARRIVED")
+ * and toggles the pulsing dot indicator.
+ *
+ * @param {string} text - Status message to display
+ * @param {boolean} isActive - Whether to show the pulsing active indicator
+ *
+ * CALLED BY: recalculateRoute(), handleArrival(), GPS error handlers
+ */
 function updateNavigationStatus(text, isActive) {
     const statusText = document.getElementById('nav-status-text');
     if (statusText) {
@@ -3433,7 +2396,23 @@ function updateNavigationStatus(text, isActive) {
     }
 }
 
-// Handle arrival at destination
+/**
+ * Handle successful arrival at the destination
+ *
+ * WHAT IT DOES:
+ * Called when the user reaches the final waypoint. Stops GPS tracking,
+ * updates the UI to show "ARRIVED", and displays a celebration message.
+ *
+ * ACTIONS:
+ * 1. Stops GPS tracking (clears the watch)
+ * 2. Sets isNavigating = false
+ * 3. Updates status display to "ARRIVED"
+ * 4. Shows instruction "You have reached your destination"
+ * 5. After 1 second: shows celebration alert
+ * 6. Calls endNavigation() to clean up and return to route results
+ *
+ * CALLED BY: advanceToNextStep() when currentStepIndex >= routeSteps.length
+ */
 function handleArrival() {
     console.log('🎉 Arrived at destination!');
 
@@ -3458,7 +2437,35 @@ function handleArrival() {
     }, 1000);
 }
 
-// End navigation and return to route results
+/**
+ * End navigation and clean up all resources
+ *
+ * WHAT IT DOES:
+ * Completely shuts down navigation mode. Stops GPS, removes markers,
+ * destroys the navigation map, and returns to the route results screen.
+ *
+ * CLEANUP ACTIONS:
+ * 1. Stops GPS tracking (clears watchPosition)
+ * 2. Resets all navigation state variables
+ * 3. Removes navigation marker from map
+ * 4. Resets map rotation (if heading-based rotation was used)
+ * 5. Destroys the navigation map instance
+ * 6. Navigates back to route results screen
+ *
+ * STATE RESET:
+ * - isNavigating = false
+ * - isPreviewMode = false
+ * - currentStepIndex = 0
+ * - currentUserPosition = null
+ * - isRecalculating = false
+ * - navigationMarker = null
+ * - navigationMap = null
+ *
+ * CALLED BY:
+ * - handleArrival() after user arrives
+ * - User clicking "Exit Navigation" button
+ * - GPS permission denied error
+ */
 function endNavigation() {
     console.log('🛑 Ending navigation...');
 
@@ -3498,64 +2505,26 @@ function endNavigation() {
     // Return to route results screen
     goToScreen('screen-route-results');
 
-    console.log('✅ Navigation ended');
-}
-
-// Calculate distance from point to polyline (route)
-function calculateDistanceToPolyline(lat, lng, polylineCoords) {
-    if (!polylineCoords || polylineCoords.length === 0) {
-        return Infinity;
-    }
-
-    let minDistance = Infinity;
-
-    // Check distance to each segment of the polyline
-    for (let i = 0; i < polylineCoords.length - 1; i++) {
-        const p1 = polylineCoords[i];
-        const p2 = polylineCoords[i + 1];
-
-        const distance = distanceToSegment(
-            { lat: lat, lng: lng },
-            { lat: p1.lat, lng: p1.lng },
-            { lat: p2.lat, lng: p2.lng }
-        );
-
-        minDistance = Math.min(minDistance, distance);
-    }
-
-    return minDistance;
-}
-
-// Calculate distance from point to line segment
-function distanceToSegment(point, segmentStart, segmentEnd) {
-    // Convert to simple x/y coordinates
-    const px = point.lng;
-    const py = point.lat;
-    const sx1 = segmentStart.lng;
-    const sy1 = segmentStart.lat;
-    const sx2 = segmentEnd.lng;
-    const sy2 = segmentEnd.lat;
-
-    // Calculate closest point on segment
-    const dx = sx2 - sx1;
-    const dy = sy2 - sy1;
-
-    if (dx === 0 && dy === 0) {
-        // Segment is a point
-        return calculateDistance(py, px, sy1, sx1);
-    }
-
-    const t = Math.max(0, Math.min(1, ((px - sx1) * dx + (py - sy1) * dy) / (dx * dx + dy * dy)));
-    const closestX = sx1 + t * dx;
-    const closestY = sy1 + t * dy;
-
-    return calculateDistance(py, px, closestY, closestX);
 }
 
 // ========================================
 // EMERGENCY ALERT
 // ========================================
 
+/**
+ * Show the emergency alert confirmation dialog
+ *
+ * WHAT IT DOES:
+ * Displays a confirmation dialog for triggering an emergency alert.
+ * Currently a placeholder - will send location to contacts in future.
+ *
+ * FUTURE FUNCTIONALITY:
+ * - Send GPS location to emergency contacts
+ * - Start audio/video recording
+ * - Notify local authorities
+ *
+ * CALLED BY: Emergency button in navigation screen
+ */
 function showEmergencyAlert() {
     const confirmed = confirm(
         '🚨 EMERGENCY ALERT 🚨\n\n' +
@@ -3582,288 +2551,163 @@ function showEmergencyAlert() {
 }
 
 // ========================================
+// PAGE INITIALIZATION HELPERS
+// ========================================
+
+/**
+ * Wire a button click to a handler (reduces repetitive code)
+ * @param {string} id - Button element ID
+ * @param {Function} handler - Click handler function
+ */
+function wireButton(id, handler) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', handler);
+}
+
+/**
+ * Wire a modal backdrop click to close the modal
+ * @param {string} modalId - Modal element ID
+ */
+function wireModalBackdrop(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.addEventListener('click', (event) => closeModalOnBackdrop(event, modalId));
+    }
+}
+
+/**
+ * Scroll to features section on home screen
+ */
+function scrollToFeatures() {
+    goToScreen('screen-home');
+    setTimeout(() => {
+        const featuresSection = document.querySelector('.features-brief');
+        if (featuresSection) {
+            featuresSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, 300);
+}
+
+// ========================================
 // PAGE INITIALIZATION
 // ========================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🎉 PinkPath initialized!');
-    console.log('🗺️ Using OpenStreetMap + Leaflet');
-    console.log('🆓 No API keys required!');
-    console.log('====================================');
+    console.log('[Init] PinkPath starting...');
 
-    // Ensure home screen is showing
+    // ========================================
+    // SCREEN INITIALIZATION
+    // ========================================
     goToScreen('screen-home');
 
-    // Initialize address autocomplete
-    setupAutocomplete('start-location');
-    setupAutocomplete('destination');
+    // ========================================
+    // AUTOCOMPLETE SETUP
+    // ========================================
+    console.log('[Init] Setting up autocomplete...');
+    setupAutocomplete('start-location',
+        () => currentUserLocation,
+        (location) => { selectedStart = location; }
+    );
+    setupAutocomplete('destination',
+        () => currentUserLocation,
+        (location) => { selectedDestination = location; }
+    );
 
-    // Add Enter key support for route inputs
+    // ========================================
+    // KEYBOARD HANDLERS
+    // ========================================
+    console.log('[Init] Setting up keyboard handlers...');
     const startInput = document.getElementById('start-location');
     const destInput = document.getElementById('destination');
 
     if (startInput) {
-        startInput.addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                destInput?.focus();
-            }
+        startInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); destInput?.focus(); }
         });
     }
-
     if (destInput) {
-        destInput.addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                findRoute();
-            }
+        destInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); findRoute(); }
         });
     }
 
     // ========================================
-    // EVENT LISTENERS - Navigation & Header
+    // HEADER & DESKTOP NAVIGATION
     // ========================================
-
-    // Logo - click to go home
-    const logoBtn = document.getElementById('logo-btn');
-    if (logoBtn) {
-        logoBtn.addEventListener('click', () => goToScreen('screen-home'));
-    }
-
-    // Desktop navigation links
-    const navHomeBtn = document.getElementById('nav-home-btn');
-    if (navHomeBtn) {
-        navHomeBtn.addEventListener('click', () => goToScreen('screen-home'));
-    }
-
-    const navPlanRouteBtn = document.getElementById('nav-plan-route-btn');
-    if (navPlanRouteBtn) {
-        navPlanRouteBtn.addEventListener('click', () => goToScreen('screen-plan-route'));
-    }
-
-    const navFeaturesBtn = document.getElementById('nav-features-btn');
-    if (navFeaturesBtn) {
-        navFeaturesBtn.addEventListener('click', () => {
-            goToScreen('screen-home');
-            // Scroll to features section after a brief delay
-            setTimeout(() => {
-                const featuresSection = document.querySelector('.features-brief');
-                if (featuresSection) {
-                    featuresSection.scrollIntoView({ behavior: 'smooth' });
-                }
-            }, 300);
-        });
-    }
-
-    // Mobile menu toggle
-    const mobileMenuToggleBtn = document.getElementById('mobile-menu-toggle-btn');
-    if (mobileMenuToggleBtn) {
-        mobileMenuToggleBtn.addEventListener('click', toggleMobileMenu);
-    }
-
-    // Mobile navigation links
-    const mobileNavHomeBtn = document.getElementById('mobile-nav-home-btn');
-    if (mobileNavHomeBtn) {
-        mobileNavHomeBtn.addEventListener('click', () => {
-            goToScreen('screen-home');
-            closeMobileMenu();
-        });
-    }
-
-    const mobileNavPlanRouteBtn = document.getElementById('mobile-nav-plan-route-btn');
-    if (mobileNavPlanRouteBtn) {
-        mobileNavPlanRouteBtn.addEventListener('click', () => {
-            goToScreen('screen-plan-route');
-            closeMobileMenu();
-        });
-    }
-
-    const mobileNavFeaturesBtn = document.getElementById('mobile-nav-features-btn');
-    if (mobileNavFeaturesBtn) {
-        mobileNavFeaturesBtn.addEventListener('click', () => {
-            goToScreen('screen-home');
-            closeMobileMenu();
-            // Scroll to features section after a brief delay
-            setTimeout(() => {
-                const featuresSection = document.querySelector('.features-brief');
-                if (featuresSection) {
-                    featuresSection.scrollIntoView({ behavior: 'smooth' });
-                }
-            }, 300);
-        });
-    }
+    console.log('[Init] Wiring navigation...');
+    wireButton('logo-btn', () => goToScreen('screen-home'));
+    wireButton('nav-home-btn', () => goToScreen('screen-home'));
+    wireButton('nav-plan-route-btn', () => goToScreen('screen-plan-route'));
+    wireButton('nav-features-btn', scrollToFeatures);
 
     // ========================================
-    // EVENT LISTENERS - Home Screen
+    // MOBILE MENU
     // ========================================
-
-    const heroGetStartedBtn = document.getElementById('hero-get-started-btn');
-    if (heroGetStartedBtn) {
-        heroGetStartedBtn.addEventListener('click', () => goToScreen('screen-plan-route'));
-    }
-
-    const heroLearnMoreBtn = document.getElementById('hero-learn-more-btn');
-    if (heroLearnMoreBtn) {
-        heroLearnMoreBtn.addEventListener('click', () => openModal('features-modal'));
-    }
+    wireButton('mobile-menu-toggle-btn', toggleMobileMenu);
+    wireButton('mobile-nav-home-btn', () => { goToScreen('screen-home'); closeMobileMenu(); });
+    wireButton('mobile-nav-plan-route-btn', () => { goToScreen('screen-plan-route'); closeMobileMenu(); });
+    wireButton('mobile-nav-features-btn', () => { scrollToFeatures(); closeMobileMenu(); });
 
     // ========================================
-    // EVENT LISTENERS - Plan Route Screen
+    // HOME SCREEN BUTTONS
     // ========================================
-
-    const useLocationBtn = document.getElementById('use-location-btn');
-    if (useLocationBtn) {
-        useLocationBtn.addEventListener('click', getUserLocation);
-    }
-
-    const preferencesToggleBtn = document.getElementById('preferences-toggle-btn');
-    if (preferencesToggleBtn) {
-        preferencesToggleBtn.addEventListener('click', togglePreferences);
-    }
-
-    const findRouteBtn = document.getElementById('find-route-btn');
-    if (findRouteBtn) {
-        findRouteBtn.addEventListener('click', findRoute);
-    }
-
-    const shareTripBtn = document.getElementById('share-trip-btn');
-    if (shareTripBtn) {
-        shareTripBtn.addEventListener('click', () => {
-            alert('Share Trip feature coming in Phase 7!');
-        });
-    }
+    console.log('[Init] Wiring home screen...');
+    wireButton('hero-get-started-btn', () => goToScreen('screen-plan-route'));
+    wireButton('hero-learn-more-btn', () => openModal('features-modal'));
 
     // ========================================
-    // EVENT LISTENERS - Route Results Screen
+    // PLAN ROUTE SCREEN BUTTONS
     // ========================================
-
-    const backToPlanningBtn = document.getElementById('back-to-planning-btn');
-    if (backToPlanningBtn) {
-        backToPlanningBtn.addEventListener('click', () => goToScreen('screen-plan-route'));
-    }
-
-    const viewCrimeDetailsBtn = document.getElementById('view-crime-details-btn');
-    if (viewCrimeDetailsBtn) {
-        viewCrimeDetailsBtn.addEventListener('click', openCrimeDetailsModal);
-    }
-
-    const startNavigationBtn = document.getElementById('start-navigation-btn');
-    if (startNavigationBtn) {
-        startNavigationBtn.addEventListener('click', startNavigation);
-    }
+    console.log('[Init] Wiring plan route screen...');
+    wireButton('use-location-btn', getUserLocation);
+    wireButton('preferences-toggle-btn', togglePreferences);
+    wireButton('find-route-btn', findRoute);
+    wireButton('share-trip-btn', () => alert('Share Trip feature coming in Phase 7!'));
 
     // ========================================
-    // EVENT LISTENERS - Active Navigation Screen
+    // ROUTE RESULTS SCREEN BUTTONS
     // ========================================
-
-    const endNavigationBtn = document.getElementById('end-navigation-btn');
-    if (endNavigationBtn) {
-        endNavigationBtn.addEventListener('click', endNavigation);
-    }
-
-    const btnPrevStep = document.getElementById('btn-prev-step');
-    if (btnPrevStep) {
-        btnPrevStep.addEventListener('click', previousStep);
-    }
-
-    const btnNextStep = document.getElementById('btn-next-step');
-    if (btnNextStep) {
-        btnNextStep.addEventListener('click', nextStep);
-    }
-
-    const emergencySosBtn = document.getElementById('emergency-sos-btn');
-    if (emergencySosBtn) {
-        emergencySosBtn.addEventListener('click', showEmergencyAlert);
-    }
-
-    const call911Btn = document.getElementById('call-911-btn');
-    if (call911Btn) {
-        call911Btn.addEventListener('click', () => {
-            alert('Calling 911...');
-        });
-    }
-
-    const alertContactsBtn = document.getElementById('alert-contacts-btn');
-    if (alertContactsBtn) {
-        alertContactsBtn.addEventListener('click', () => {
-            alert('Alerting contacts...');
-        });
-    }
-
-    const shareLiveLocationBtn = document.getElementById('share-live-location-btn');
-    if (shareLiveLocationBtn) {
-        shareLiveLocationBtn.addEventListener('click', () => {
-            alert('Share Live Location feature coming in Phase 7!');
-        });
-    }
-
-    const alternativeRoutesBtn = document.getElementById('alternative-routes-btn');
-    if (alternativeRoutesBtn) {
-        alternativeRoutesBtn.addEventListener('click', () => {
-            alert('Alternative routes coming soon!');
-        });
-    }
+    console.log('[Init] Wiring route results screen...');
+    wireButton('back-to-planning-btn', () => goToScreen('screen-plan-route'));
+    wireButton('view-crime-details-btn', () => openCrimeDetailsModal(() => currentRouteData, openModal));
+    wireButton('start-navigation-btn', startNavigation);
+    wireButton('alternative-routes-btn', () => alert('Alternative routes coming soon!'));
 
     // ========================================
-    // EVENT LISTENERS - Features Modal
+    // ACTIVE NAVIGATION SCREEN BUTTONS
     // ========================================
-
-    const featuresModal = document.getElementById('features-modal');
-    if (featuresModal) {
-        featuresModal.addEventListener('click', (event) => {
-            closeModalOnBackdrop(event, 'features-modal');
-        });
-    }
-
-    const featuresModalCloseBtn = document.getElementById('features-modal-close-btn');
-    if (featuresModalCloseBtn) {
-        featuresModalCloseBtn.addEventListener('click', () => closeModal('features-modal'));
-    }
-
-    const featuresModalGetStartedBtn = document.getElementById('features-modal-get-started-btn');
-    if (featuresModalGetStartedBtn) {
-        featuresModalGetStartedBtn.addEventListener('click', () => {
-            closeModal('features-modal');
-            goToScreen('screen-plan-route');
-        });
-    }
+    console.log('[Init] Wiring navigation screen...');
+    wireButton('end-navigation-btn', endNavigation);
+    wireButton('btn-prev-step', previousStep);
+    wireButton('btn-next-step', nextStep);
+    wireButton('emergency-sos-btn', showEmergencyAlert);
+    wireButton('call-911-btn', () => alert('Calling 911...'));
+    wireButton('alert-contacts-btn', () => alert('Alerting contacts...'));
+    wireButton('share-live-location-btn', () => alert('Share Live Location feature coming in Phase 7!'));
 
     // ========================================
-    // EVENT LISTENERS - Crime Details Modal
+    // FEATURES MODAL
     // ========================================
+    console.log('[Init] Setting up modals...');
+    wireModalBackdrop('features-modal');
+    wireButton('features-modal-close-btn', () => closeModal('features-modal'));
+    wireButton('features-modal-get-started-btn', () => {
+        closeModal('features-modal');
+        goToScreen('screen-plan-route');
+    });
 
-    const crimeDetailsModal = document.getElementById('crime-details-modal');
-    if (crimeDetailsModal) {
-        crimeDetailsModal.addEventListener('click', (event) => {
-            closeModalOnBackdrop(event, 'crime-details-modal');
-        });
-    }
+    // ========================================
+    // CRIME DETAILS MODAL
+    // ========================================
+    wireModalBackdrop('crime-details-modal');
+    wireButton('crime-modal-close-btn', () => closeModal('crime-details-modal'));
+    wireButton('more-info-btn', toggleCrimeDetails);
+    wireButton('crime-modal-close-footer-btn', () => closeModal('crime-details-modal'));
 
-    const crimeModalCloseBtn = document.getElementById('crime-modal-close-btn');
-    if (crimeModalCloseBtn) {
-        crimeModalCloseBtn.addEventListener('click', () => closeModal('crime-details-modal'));
-    }
-
-    const moreInfoBtn = document.getElementById('more-info-btn');
-    if (moreInfoBtn) {
-        moreInfoBtn.addEventListener('click', toggleCrimeDetails);
-    }
-
-    const crimeModalCloseFooterBtn = document.getElementById('crime-modal-close-footer-btn');
-    if (crimeModalCloseFooterBtn) {
-        crimeModalCloseFooterBtn.addEventListener('click', () => closeModal('crime-details-modal'));
-    }
-
-    console.log('====================================');
-    console.log('📊 FEATURES:');
-    console.log('✅ OpenStreetMap Integration');
-    console.log('✅ Nominatim Address Autocomplete (Free!)');
-    console.log('✅ OSRM Route Calculation (Free!)');
-    console.log('✅ Pink Custom Styling');
-    console.log('✅ No API Keys Needed');
-    console.log('✅ No Usage Limits');
-    console.log('✅ 100% Free Forever');
-    console.log('====================================');
+    // ========================================
+    // INITIALIZATION COMPLETE
+    // ========================================
+    console.log('[Init] PinkPath ready!');
 });
 
 // ========================================
@@ -3878,12 +2722,3 @@ function isMobile() {
     return window.innerWidth < 768;
 }
 
-window.addEventListener('resize', function() {
-    console.log(`Window resized: ${window.innerWidth}x${window.innerHeight}`);
-    console.log(`Device type: ${isMobile() ? 'Mobile' : 'Desktop/Tablet'}`);
-});
-
-console.log('📱 PinkPath is ready to use!');
-console.log('👉 Try navigating between screens using the header menu');
-console.log('👉 Click "Features" to learn about safety features');
-console.log('👉 Go to "Plan Route" to test the route planning with real addresses!');
