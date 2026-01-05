@@ -512,6 +512,38 @@ body {
     line-height: 1.6;
 }
 
+/* CTA Section */
+.cta-section {
+    padding: 80px 0;
+    background: linear-gradient(135deg, var(--gray-pale) 0%, var(--white) 100%);
+    text-align: center;
+}
+
+.cta-content {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.cta-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--gray-dark);
+    margin-bottom: 16px;
+}
+
+.cta-subtitle {
+    font-size: 18px;
+    color: var(--gray-medium);
+    margin-bottom: 32px;
+    line-height: 1.6;
+}
+
+.cta-section .btn-large {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 /* ============================================
    ROUTE PLANNING SCREEN
    ============================================ */
@@ -1388,16 +1420,11 @@ body {
    ACTIVE NAVIGATION SCREEN
    ============================================ */
 
-/* Navigation screen full height on mobile */
-#screen-active-navigation {
+/* Navigation screen: only show as flex when active */
+#screen-active-navigation.active {
     padding-top: 0;
     display: flex;
     flex-direction: column;
-}
-
-/* CRITICAL FIX: Override display block when navigation screen is active */
-#screen-active-navigation.active {
-    display: flex !important;
 }
 
 #screen-active-navigation .map-container {
@@ -2276,4 +2303,148 @@ body {
     text-align: center;
     color: var(--gray-medium);
     font-size: 14px;
+}
+
+/* ========================================
+   FOOTER STYLES
+   ======================================== */
+
+.main-footer {
+    background-color: var(--gray-light);
+    border-top: 1px solid #e5e5e5;
+    padding: 24px 0;
+    margin-top: auto;
+}
+
+.footer-links {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 12px;
+}
+
+.footer-link {
+    color: var(--gray-medium);
+    text-decoration: none;
+    font-size: 14px;
+    transition: var(--transition);
+}
+
+.footer-link:hover {
+    color: var(--pink-primary);
+}
+
+.footer-link.active {
+    color: var(--pink-primary);
+    font-weight: 500;
+}
+
+.footer-copyright {
+    text-align: center;
+    color: var(--gray-medium);
+    font-size: 13px;
+    margin: 0;
+}
+
+/* ========================================
+   LEGAL PAGE STYLES (Privacy, Terms)
+   ======================================== */
+
+.legal-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.legal-page .main-header {
+    position: relative;
+}
+
+.legal-content {
+    flex: 1;
+    padding: 40px 0 60px;
+    background-color: var(--white);
+}
+
+.legal-content h1 {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--gray-dark);
+    margin-bottom: 8px;
+}
+
+.legal-updated {
+    color: var(--gray-medium);
+    font-size: 14px;
+    margin-bottom: 40px;
+}
+
+.legal-section {
+    margin-bottom: 32px;
+}
+
+.legal-section h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--gray-dark);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--pink-pale);
+}
+
+.legal-section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--gray-dark);
+    margin-top: 20px;
+    margin-bottom: 8px;
+}
+
+.legal-section p {
+    color: var(--gray-dark);
+    font-size: 15px;
+    line-height: 1.7;
+    margin-bottom: 12px;
+}
+
+.legal-section ul {
+    margin: 12px 0;
+    padding-left: 24px;
+}
+
+.legal-section li {
+    color: var(--gray-dark);
+    font-size: 15px;
+    line-height: 1.7;
+    margin-bottom: 8px;
+}
+
+.legal-section a {
+    color: var(--pink-primary);
+    text-decoration: none;
+}
+
+.legal-section a:hover {
+    text-decoration: underline;
+}
+
+/* Mobile adjustments for legal pages */
+@media (max-width: 768px) {
+    .legal-content {
+        padding: 24px 0 40px;
+    }
+
+    .legal-content h1 {
+        font-size: 26px;
+    }
+
+    .legal-section h2 {
+        font-size: 18px;
+    }
+
+    .footer-links {
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+    }
 }

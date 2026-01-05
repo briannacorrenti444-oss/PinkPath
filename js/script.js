@@ -92,6 +92,9 @@ import {
     distanceToSegment
 } from './modules/controllers/routeController.js';
 
+// Import RoutePlanner component (PHASE 4: Component Extraction)
+import { RoutePlanner } from './modules/components/routePlanner.js';
+
 // ========================================
 // MAP ICONS (browser-only, not in config.js)
 // ========================================
@@ -166,6 +169,10 @@ let navigationMarker = null;            // Blue dot during active navigation
 // Tile layers for light/dark mode toggle
 let lightTileLayer = null;
 let darkTileLayer = null;
+
+// Component instances
+let mainRoutePlanner = null;            // RoutePlanner component on plan-route screen
+let homeRoutePlanner = null;            // RoutePlanner component on home screen CTA
 
 // ----------------------------------------
 // 2. LOCATION STATE
@@ -387,10 +394,10 @@ function togglePreferences() {
 // ROUTE FINDING
 // ========================================
 
-async function findRoute() {
+async function findRoute(inputValues = {}, safetyPreferences = {}) {
 
-    const startLocation = document.getElementById('start-location').value.trim();
-    const destination = document.getElementById('destination').value.trim();
+    const startLocation = (inputValues.start || '').trim();
+    const destination = (inputValues.destination || '').trim();
 
     console.log('📍 Start:', startLocation);
     console.log('📍 Destination:', destination);
@@ -398,21 +405,19 @@ async function findRoute() {
     // Validate inputs
     if (!startLocation) {
         alert('⚠️ Please enter your starting point');
-        document.getElementById('start-location').focus();
         return;
     }
 
     if (!destination) {
         alert('⚠️ Please enter your destination');
-        document.getElementById('destination').focus();
         return;
     }
 
-    // Get safety preferences
+    // Safety preferences with defaults
     const preferences = {
-        wellLit: document.getElementById('well-lit')?.checked || false,
-        busyAreas: document.getElementById('busy-areas')?.checked || false,
-        avoidConstruction: document.getElementById('avoid-construction')?.checked || false
+        wellLit: safetyPreferences.wellLit || false,
+        busyAreas: safetyPreferences.busyAreas || false,
+        avoidConstruction: safetyPreferences.avoidConstruction || false
     };
 
     console.log('⚙️ Preferences:', preferences);
@@ -445,11 +450,13 @@ async function findRoute() {
 // REAL-TIME LOCATION (PHASE 1)
 // ========================================
 
-async function getUserLocation() {
-    console.log('📍 Requesting user location...');
+async function getUserLocationForInput(inputId, onLocationSelected = null) {
+    console.log('📍 Requesting user location for input:', inputId);
 
-    const btn = document.getElementById('use-location-btn');
-    const startInput = document.getElementById('start-location');
+    // Derive button ID from input ID (e.g., 'main-start-location' -> 'main-use-location-btn')
+    const btnId = inputId.replace('-start-location', '-use-location-btn');
+    const btn = document.getElementById(btnId);
+    const startInput = document.getElementById(inputId);
 
     // Check if geolocation is supported
     if (!navigator.geolocation) {
@@ -457,9 +464,17 @@ async function getUserLocation() {
         return;
     }
 
+    // Check if elements exist
+    if (!startInput) {
+        console.error('Could not find input element:', inputId);
+        return;
+    }
+
     // Show loading state
-    btn.classList.add('loading');
-    btn.disabled = true;
+    if (btn) {
+        btn.classList.add('loading');
+        btn.disabled = true;
+    }
     startInput.placeholder = 'Getting your location...';
 
     // Request location
@@ -491,10 +506,17 @@ async function getUserLocation() {
 
                 console.log('📍 Address found:', address);
 
+                // Trigger callback for sync between instances
+                if (onLocationSelected) {
+                    onLocationSelected(selectedStart);
+                }
+
                 // Show success state
-                btn.classList.remove('loading');
-                btn.classList.add('active');
-                btn.title = 'Location acquired';
+                if (btn) {
+                    btn.classList.remove('loading');
+                    btn.classList.add('active');
+                    btn.title = 'Location acquired';
+                }
                 startInput.placeholder = 'Current location';
 
                 // Show location on map if visible
@@ -507,17 +529,23 @@ async function getUserLocation() {
             } else {
                 // Failed to get address
                 alert('⚠️ Found your location but could not determine the address. Please type it manually.');
-                btn.classList.remove('loading');
+                if (btn) {
+                    btn.classList.remove('loading');
+                }
                 startInput.placeholder = 'Enter your current location';
             }
 
-            btn.disabled = false;
+            if (btn) {
+                btn.disabled = false;
+            }
         },
         // Error callback
         function(error) {
             console.error('❌ Location error:', error);
-            btn.classList.remove('loading');
-            btn.disabled = false;
+            if (btn) {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
             startInput.placeholder = 'Enter your current location';
 
             // Handle specific errors
@@ -2601,34 +2629,74 @@ document.addEventListener('DOMContentLoaded', function() {
     goToScreen('screen-home');
 
     // ========================================
-    // AUTOCOMPLETE SETUP
+    // ROUTE PLANNER COMPONENT INITIALIZATION
     // ========================================
-    console.log('[Init] Setting up autocomplete...');
-    setupAutocomplete('start-location',
-        () => currentUserLocation,
-        (location) => { selectedStart = location; }
-    );
-    setupAutocomplete('destination',
-        () => currentUserLocation,
-        (location) => { selectedDestination = location; }
-    );
+    console.log('[Init] Initializing RoutePlanner components...');
 
-    // ========================================
-    // KEYBOARD HANDLERS
-    // ========================================
-    console.log('[Init] Setting up keyboard handlers...');
-    const startInput = document.getElementById('start-location');
-    const destInput = document.getElementById('destination');
+    /**
+     * Sync location selection between route planner instances
+     * Updates global state and syncs input values to the other instance
+     * @param {string} sourceInstance - 'main' or 'home'
+     * @param {string} type - 'start' or 'destination'
+     * @param {Object} location - {lat, lng, name}
+     */
+    function syncLocationSelection(sourceInstance, type, location) {
+        // Update global state
+        if (type === 'start') {
+            selectedStart = location;
+        } else if (type === 'destination') {
+            selectedDestination = location;
+        }
 
-    if (startInput) {
-        startInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); destInput?.focus(); }
-        });
+        // Sync to the other instance
+        const targetInstance = sourceInstance === 'main' ? homeRoutePlanner : mainRoutePlanner;
+        if (targetInstance) {
+            const values = {};
+            values[type] = location.name || '';
+            targetInstance.setValues(values);
+            console.log(`[Sync] ${sourceInstance} → ${sourceInstance === 'main' ? 'home' : 'main'}: ${type} = "${location.name}"`);
+        }
     }
-    if (destInput) {
-        destInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); findRoute(); }
+
+    const mainPlannerContainer = document.getElementById('route-planner-main');
+    if (mainPlannerContainer) {
+        mainRoutePlanner = new RoutePlanner(mainPlannerContainer, {
+            instanceId: 'main',
+            showPreferences: true,
+            showShareButton: true,
+            getCurrentLocation: () => currentUserLocation,
+            onLocationSelected: (type, location) => {
+                syncLocationSelection('main', type, location);
+            },
+            getUserLocation: (inputId, onLocationSelected) => getUserLocationForInput(inputId, onLocationSelected),
+            onRouteRequest: (values, prefs) => findRoute(values, prefs),
+            onShareTrip: () => alert('Share Trip feature coming soon!')
         });
+        mainRoutePlanner.init();
+        console.log('[Init] Main RoutePlanner initialized');
+    } else {
+        console.error('[Init] Could not find #route-planner-main container');
+    }
+
+    // Home screen route planner (simplified - no preferences, no share button)
+    const homePlannerContainer = document.getElementById('route-planner-home');
+    if (homePlannerContainer) {
+        homeRoutePlanner = new RoutePlanner(homePlannerContainer, {
+            instanceId: 'home',
+            showPreferences: false,
+            showShareButton: false,
+            getCurrentLocation: () => currentUserLocation,
+            onLocationSelected: (type, location) => {
+                syncLocationSelection('home', type, location);
+            },
+            getUserLocation: (inputId, onLocationSelected) => getUserLocationForInput(inputId, onLocationSelected),
+            onRouteRequest: (values, prefs) => findRoute(values, prefs),
+            onShareTrip: () => {} // Not used, but required by interface
+        });
+        homeRoutePlanner.init();
+        console.log('[Init] Home RoutePlanner initialized');
+    } else {
+        console.error('[Init] Could not find #route-planner-home container');
     }
 
     // ========================================
@@ -2657,12 +2725,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ========================================
     // PLAN ROUTE SCREEN BUTTONS
+    // (Now handled by RoutePlanner component - see ROUTE PLANNER COMPONENT INITIALIZATION)
     // ========================================
-    console.log('[Init] Wiring plan route screen...');
-    wireButton('use-location-btn', getUserLocation);
-    wireButton('preferences-toggle-btn', togglePreferences);
-    wireButton('find-route-btn', findRoute);
-    wireButton('share-trip-btn', () => alert('Share Trip feature coming in Phase 7!'));
 
     // ========================================
     // ROUTE RESULTS SCREEN BUTTONS

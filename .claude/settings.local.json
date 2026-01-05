@@ -3,7 +3,10 @@
     "allow": [
       "Bash(git push)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebFetch(domain:data.sfgov.org)",
+      "WebSearch",
+      "WebFetch(domain:www.sfpuc.gov)"
     ]
   }
 }

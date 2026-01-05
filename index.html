@@ -191,6 +191,17 @@
                 </div>
             </div>
         </section>
+
+        <!-- PLAN ROUTE CTA -->
+        <section class="cta-section">
+            <div class="container">
+                <div class="cta-content">
+                    <h2 class="cta-title">Ready to Navigate <span class="pink">Safely</span>?</h2>
+                    <!-- Route Planner Component Container (Home) -->
+                    <div id="route-planner-home"></div>
+                </div>
+            </div>
+        </section>
     </div>
 
     <!-- SCREEN 2: PLAN YOUR ROUTE -->
@@ -202,102 +213,8 @@
                     <p class="page-subtitle">Enter your starting point and destination to find the safest path</p>
                 </div>
 
-                <div class="card route-planner">
-                    <!-- Starting Point -->
-                    <div class="input-wrapper">
-                        <label class="input-label">
-                            <span class="label-icon pink">
-                                <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                                </svg>
-                            </span>
-                            Starting Point
-                        </label>
-                        <div class="input-with-button">
-                            <input
-                                type="text"
-                                id="start-location"
-                                class="input-field"
-                                placeholder="Enter your current location"
-                            >
-                            <!-- Button to get user's current GPS location -->
-                            <button class="location-btn" id="use-location-btn" title="Use my current location">
-                                <svg viewBox="0 0 24 24" fill="currentColor" class="location-icon">
-                                    <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
-                                </svg>
-                                <span class="location-text">Use My Location</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Divider -->
-                    <div class="route-divider">
-                        <span class="divider-icon">↓</span>
-                    </div>
-
-                    <!-- Destination -->
-                    <div class="input-wrapper">
-                        <label class="input-label">
-                            <span class="label-icon pink">
-                                <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                                </svg>
-                            </span>
-                            Destination
-                        </label>
-                        <input
-                            type="text"
-                            id="destination"
-                            class="input-field"
-                            placeholder="Where are you going?"
-                        >
-                    </div>
-
-                    <!-- Safety Preferences (Collapsible) -->
-                    <div class="preferences-section">
-                        <!-- Toggle button to expand/collapse safety preferences -->
-                        <button class="preferences-toggle" id="preferences-toggle-btn">
-                            <span class="preferences-label">
-                                <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-right: 8px;">
-                                    <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-                                </svg>
-                                Safety Preferences
-                            </span>
-                            <span class="toggle-arrow" id="preferences-arrow">
-                                <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px;">
-                                    <path d="M7 10l5 5 5-5z"/>
-                                </svg>
-                            </span>
-                        </button>
-                        <div class="preferences-content" id="preferences-content">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="well-lit">
-                                <span>Prefer well-lit streets</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="busy-areas">
-                                <span>Prefer busy, populated areas</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="avoid-construction">
-                                <span>Avoid construction zones</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <!-- Button to calculate and display the safest route -->
-                    <button class="btn-large btn-primary" id="find-route-btn">
-                        Find Safest Route
-                    </button>
-                    <!-- Button to share trip details (Phase 7 feature) -->
-                    <button class="btn-large btn-secondary" id="share-trip-btn">
-                        <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-right: 8px;">
-                            <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/>
-                        </svg>
-                        Share Trip
-                    </button>
-                </div>
+                <!-- Route Planner Component Container -->
+                <div id="route-planner-main"></div>
 
                 <!-- Info Box -->
                 <div class="info-banner">
@@ -738,6 +655,17 @@
             </div>
         </div>
     </div>
+
+    <!-- FOOTER -->
+    <footer class="main-footer">
+        <div class="container">
+            <div class="footer-links">
+                <a href="privacy.html" class="footer-link">Privacy Policy</a>
+                <a href="terms.html" class="footer-link">Terms of Service</a>
+            </div>
+            <p class="footer-copyright">&copy; 2026 PinkPath, LLC. All rights reserved.</p>
+        </div>
+    </footer>
 
     <!-- Main JavaScript (ES6 Module) -->
     <script type="module" src="js/script.js"></script>
