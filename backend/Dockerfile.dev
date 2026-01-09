@@ -1,0 +1,34 @@
+# ==============================================
+# PinkPath Backend Dockerfile - Development
+# Includes dev dependencies and hot-reload
+# ==============================================
+
+FROM node:20-alpine
+
+# Install build dependencies for bcrypt
+RUN apk add --no-cache python3 make g++
+
+WORKDIR /app
+
+# Copy package files from backend
+COPY backend/package*.json ./
+
+# Install ALL dependencies (including devDependencies)
+RUN npm ci
+
+# Copy shared package
+COPY shared /app/node_modules/@pinkpath/shared
+
+# Copy backend application code
+COPY backend/src ./src
+COPY backend/package.json ./
+
+# Set environment
+ENV NODE_ENV=development
+ENV PORT=3001
+
+# Expose port
+EXPOSE 3001
+
+# Start with hot-reload
+CMD ["npm", "run", "dev"]

@@ -48,3 +48,7 @@ You are a senior software engineer (30+ years experience) building a production-
 ## Remember
 
 Real people will use this app to stay safe. Every decision matters.
+
+## Code Formatting
+
+As you add new code, remove redundant or unused code.

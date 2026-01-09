@@ -1,0 +1,35 @@
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
+# Development files
+*.test.js
+tests/
+coverage/
+.nyc_output/
+
+# IDE and OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.docker/
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/

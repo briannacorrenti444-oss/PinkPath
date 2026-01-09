@@ -13,3 +13,11 @@ Thumbs.db
 
 # Local settings
 .claude/settings.local.json
+
+# Environment variables (contains secrets)
+.env
+.env.local
+.env.*.local
+
+# Docker volumes
+postgres_data/

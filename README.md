@@ -1,221 +1,317 @@
 # PinkPath - Safety Navigation App
 
-A web app that helps you find the **safest walking route** between two locations, using real crime data to score route safety.
-
----
-
-## What Does This App Do?
-
-PinkPath is like Google Maps, but focused on **safety**. When you enter a start and destination:
-
-1. **Finds multiple walking routes** using OpenStreetMap
-2. **Analyzes crime data** along each route (in San Francisco, uses real SF crime data)
-3. **Calculates a safety score** (0-10) for each route
-4. **Shows a color-coded route** - green segments are safer, red segments have more crime
-5. **Recommends the safest option** automatically
-6. **Provides turn-by-turn navigation** with GPS tracking
+A safety-first pedestrian navigation app for San Francisco that calculates walking routes and scores them based on crime data, street lighting, and foot traffic.
 
 ---
 
 ## Quick Start
 
-### To Run Locally
+### Prerequisites
 
-**Important:** This app uses ES6 modules, so you need a local server (not just opening index.html directly).
+- **Node.js** 18+ (includes npm)
+- **PostgreSQL** 14+ (for backend database)
+- **Google Maps API Key** (for routing and maps)
 
-**Option 1: Python (built into Mac/Linux, easy install on Windows)**
+### Installation
+
 ```bash
-cd "path/to/App V2"
-python -m http.server 8000
+# Clone the repository
+git clone <repository-url>
+cd "App V2"
+
+# Install all dependencies (root, backend, frontend, shared)
+npm install
+
+# Copy environment template and add your API keys
+cp .env.example .env
+# Edit .env with your actual API keys (see Configuration section)
 ```
-Then open: `http://localhost:8000`
 
-**Option 2: VS Code Live Server**
-1. Install the "Live Server" extension in VS Code
-2. Right-click `index.html` → "Open with Live Server"
+### Running Locally
 
-**Option 3: Node.js**
 ```bash
-cd "path/to/App V2"
-npx serve
+# Start both frontend and backend
+npm run dev
+
+# Or start individually:
+npm run dev:backend   # Backend at http://localhost:3001
+npm run dev:frontend  # Frontend at http://localhost:3000
 ```
 
-**Why a server?** Opening index.html directly (file://) causes CORS errors with ES6 modules. A local server fixes this and enables GPS features.
+### First Test
 
-### To Use the App
-
-1. Click **"Plan Route"** on the home screen
-2. Enter your **starting location** (or click "Use My Location")
-3. Enter your **destination**
-4. Click **"Find Safest Route"**
-5. Review the route options and safety scores
-6. Click **"Start Navigation"** to begin turn-by-turn directions
+1. Open `http://localhost:3000` in your browser
+2. Click **"Plan Route"**
+3. Enter **"Union Square"** as start
+4. Enter **"Ferry Building"** as destination
+5. Click **"Find Safest Route"**
+6. Verify: Routes display with safety scores
 
 ---
 
 ## Project Structure
 
 ```
-App V2/
-├── index.html          # The main HTML page (all screens are in here)
-├── styles.css          # All the styling (colors, layout, animations)
-├── README.md           # This file - you're reading it!
+pinkpath/
+├── package.json              # Root package (npm workspaces)
+├── .env.example              # Environment template
+├── README.md                 # This file
+├── ARCHITECTURE.md           # Technical architecture details
+├── CLAUDE.md                 # AI assistant guidelines
 │
-└── js/
-    ├── script.js       # Main application code (UI, maps, navigation)
-    │
-    └── modules/
-        ├── config.js   # Settings and API configuration
-        ├── utils.js    # Helper functions (distance, formatting)
-        │
-        └── services/
-            ├── crimeService.js      # Fetches and processes crime data
-            ├── sunsetService.js     # Gets sunrise/sunset times
-            ├── safetyService.js     # Calculates safety scores
-            └── geocodingService.js  # Converts addresses to coordinates
+├── frontend/                 # @pinkpath/frontend
+│   ├── package.json
+│   ├── index.html            # Single-page app
+│   ├── styles.css            # All styling
+│   ├── privacy.html          # Privacy policy
+│   ├── terms.html            # Terms of service
+│   └── js/
+│       ├── script.js         # Main app logic
+│       └── modules/          # Services, controllers, components
+│
+├── backend/                  # @pinkpath/backend
+│   ├── package.json
+│   └── src/
+│       ├── server.js         # Fastify server
+│       ├── config/           # Configuration
+│       ├── db/               # PostgreSQL connection + schema
+│       ├── routes/           # API endpoints
+│       └── services/         # Business logic
+│           ├── integration/
+│           │   └── pathAlgorithm.js  # Core safety algorithm
+│           ├── crimeService.js       # SF crime data
+│           ├── lightingService.js    # Street lighting
+│           ├── sunsetService.js      # Time of day
+│           ├── footTrafficService.js # Pedestrian activity
+│           └── geocodingService.js   # Address conversion
+│
+└── shared/                   # @pinkpath/shared
+    ├── weights.js            # Safety scoring weights
+    └── constants.js          # Shared constants
 ```
 
 ---
 
-## How the Code is Organized
+## Configuration
 
-### The Main File: `script.js`
+### Environment Variables
 
-This is the "brain" of the app. It handles:
-- **Screen navigation** - switching between Home, Plan Route, Results, Navigation screens
-- **Map display** - showing the Leaflet maps with routes and markers
-- **User interactions** - button clicks, form inputs, GPS tracking
-- **Connecting everything** - calling the service modules and updating the UI
+Copy `.env.example` to `.env` and configure:
 
-### The Service Modules (in `js/modules/services/`)
+```bash
+# Required
+GOOGLE_MAPS_API_KEY=your_key     # Google Cloud Console
+DATABASE_URL=postgres://user:pass@localhost:5432/pinkpath
+JWT_SECRET=random_secure_string
 
-These are specialized files that each do ONE job:
+# Optional (have defaults)
+PORT=3001
+DATASF_APP_TOKEN=your_token      # Higher rate limits for SF data
+```
 
-| File | What It Does |
-|------|--------------|
-| `crimeService.js` | Fetches crime data from San Francisco's open data API |
-| `sunsetService.js` | Gets sunrise/sunset times to know if it's dark outside |
-| `safetyService.js` | Takes crime data and calculates a safety score (0-10) |
-| `geocodingService.js` | Converts text addresses into latitude/longitude coordinates |
+### Getting API Keys
 
-### The Config and Utils (in `js/modules/`)
+| Key | Where to Get | Required |
+|-----|--------------|----------|
+| GOOGLE_MAPS_API_KEY | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) | Yes |
+| DATASF_APP_TOKEN | [DataSF](https://data.sfgov.org/profile/edit/developer_settings) | No (has default) |
 
-| File | What It Does |
-|------|--------------|
-| `config.js` | Stores settings like API URLs, crime weights, map icons |
-| `utils.js` | Helper functions for math (distance) and formatting (miles, minutes) |
-
----
-
-## Key Concepts for Beginners
-
-### What is "State"?
-
-State = the current data the app is working with. For example:
-- `selectedStart` - the location the user picked as their starting point
-- `currentRoute` - the route currently displayed on the map
-- `isNavigating` - whether turn-by-turn navigation is active (true/false)
-
-State is stored in variables at the top of `script.js`.
-
-### What is a "Service"?
-
-A service is a module that talks to an external API or does complex calculations. We keep these separate from the main code so they're:
-- **Easier to test** - you can test crime calculations without needing a map
-- **Easier to understand** - each file does one thing
-- **Reusable** - the geocoding service could be used in other projects
-
-### What is "Geocoding"?
-
-Converting a text address (like "123 Main St") into coordinates (like `{lat: 37.7749, lng: -122.4194}`). We use the free Nominatim service for this.
-
-### What is an "Ombre Route"?
-
-A route line that changes color along its length - green where it's safe, yellow where it's moderate, red where there's more crime. "Ombre" means gradient/fading between colors.
-
----
-
-## Technologies Used
-
-| Technology | What It's For |
-|------------|---------------|
-| **HTML/CSS/JavaScript** | The basics - structure, styling, behavior |
-| **Leaflet.js** | Shows interactive maps (open-source Google Maps alternative) |
-| **Leaflet Routing Machine** | Calculates walking routes using OSRM |
-| **OpenStreetMap** | Free map tiles (the actual map images) |
-| **Nominatim** | Free geocoding (address to coordinates) |
-| **SF Open Data** | Real crime data for San Francisco |
-| **Sunrise-Sunset API** | Knows when it's dark outside |
-
-**No API keys required!** All services used are free and open.
+**Google Maps APIs needed:**
+- Routes API
+- Geocoding API
+- Places API
+- Maps JavaScript API
 
 ---
 
 ## Features
 
-- **Address autocomplete** - Start typing and see suggestions
-- **GPS location** - Use your current location as the start point
-- **Multiple route options** - Compare 2+ routes side by side
-- **Safety scoring** - Each route gets a score from 0-10
-- **Crime breakdown** - See what types of crimes are in the area
-- **Ombre route coloring** - Visual safety indicator on the map
-- **Dark/light mode** - Toggle map appearance
-- **Turn-by-turn navigation** - Step-by-step directions
-- **Off-route detection** - Automatically recalculates if you stray
-- **Nighttime warnings** - Extra alerts when walking after dark
+### Current
+- **Multi-route calculation** - Get up to 8 walking route options
+- **Safety scoring** - 0-100 score based on crime, lighting, foot traffic
+- **Crime data integration** - Historical + real-time police dispatch
+- **Time-aware scoring** - Adjusts for daylight vs nighttime
+- **Turn-by-turn navigation** - GPS-tracked walking directions
+- **Address autocomplete** - Smart address suggestions
+
+### How Safety Scoring Works
+
+```
+Safety Score = Σ(weight × factor_score) × time_modifier
+
+Factors:
+├── Historical Crime (35%)   - Past 90 days crime density
+├── Real-time CAD (15%)      - Current police activity
+├── Street Lighting (20%)    - 311 complaints + time of day
+├── Foot Traffic (15%)       - Transit proximity, place activity
+└── Time of Day (15%)        - Daylight vs night modifier
+```
+
+Weights are configurable in `shared/weights.js`.
 
 ---
 
-## For Developers
+## API Endpoints
 
-### Adding Console Logging
+### Routes
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/routes/calculate` | POST | Calculate safe routes |
+| `/api/routes/geocode` | POST | Address to coordinates |
+| `/api/routes/reverse-geocode` | POST | Coordinates to address |
+| `/api/routes/history` | GET | User's route history |
 
-Most functions already have `console.log()` statements. Open your browser's Developer Tools (F12) and look at the Console tab to see what's happening.
+### Safety Data
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/safety/crime` | GET | Historical crime data |
+| `/api/safety/crime/realtime` | GET | Real-time CAD dispatch |
+| `/api/safety/lighting` | GET | Streetlight complaints |
+| `/api/safety/sunset` | GET | Sunrise/sunset times |
+| `/api/safety/score` | GET | Aggregate safety score |
+| `/api/safety/heatmap` | GET | Crime heatmap data |
 
-### Understanding the Data Flow
+### Authentication
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/register` | POST | Create account |
+| `/api/auth/login` | POST | Login |
+| `/api/auth/me` | GET | Get current user |
 
-1. User enters addresses
-2. `geocodingService` converts addresses to coordinates
-3. Leaflet Routing Machine calculates possible routes
-4. `crimeService` fetches crime data along each route
-5. `safetyService` calculates safety scores
-6. `script.js` displays everything on the map and UI
+---
 
-### State is Organized in Groups
+## Development
 
-Look at the top of `script.js` - state variables are grouped into:
-1. **MAP STATE** - map instances, layers, markers
-2. **LOCATION STATE** - start, destination, GPS position
-3. **ROUTE STATE** - current route, all options, steps
-4. **NAVIGATION STATE** - is navigating, current step, etc.
-5. **UI STATE** - dark mode, timers
+### Code Style
+
+- **ES6 modules** for imports/exports
+- **JSDoc comments** on all functions
+- **Descriptive variable names** (no single letters)
+- **Console logging** with emoji prefixes for debugging
+
+### Testing
+
+```bash
+# Run backend tests
+cd backend && npm test
+
+# Run frontend tests
+cd frontend && npm test
+```
+
+### Adding a New Service
+
+1. Create `backend/src/services/myService.js`
+2. Export pure functions (no DOM access)
+3. Import in route handlers
+4. Add configuration to `backend/src/config/index.js` if needed
+
+### Adding an API Endpoint
+
+```javascript
+// In backend/src/routes/*.js
+fastify.get('/my-endpoint', {
+  schema: {
+    querystring: { type: 'object', properties: {...} }
+  }
+}, async (request, reply) => {
+  // Handler logic
+  return reply.send({ success: true, data: ... });
+});
+```
+
+---
+
+## Database
+
+### Schema
+
+PostgreSQL tables created in `backend/src/db/connection.js`:
+
+- `users` - User accounts (bcrypt passwords)
+- `contacts` - Emergency contacts
+- `safety_preferences` - User safety settings
+- `crime_data_cache` - Cached crime data
+- `streetlight_cache` - Cached lighting data
+- `transit_stops` - SFMTA transit stops
+- `route_history` - Saved routes
+
+### Setup
+
+```bash
+# Create database
+createdb pinkpath
+
+# Tables auto-create on first backend start
+npm run dev:backend
+```
+
+---
+
+## External APIs
+
+| API | Purpose | Module |
+|-----|---------|--------|
+| Google Routes | Walking directions | googleRoutesService.js |
+| Google Geocoding | Address conversion | geocodingService.js |
+| DataSF Crime | Historical crime | crimeService.js |
+| DataSF CAD | Real-time police | crimeService.js |
+| DataSF 311 | Streetlight complaints | lightingService.js |
+| SFMTA GTFS | Transit stops | footTrafficService.js |
+| sunrise-sunset.org | Sun times | sunsetService.js |
 
 ---
 
 ## Troubleshooting
 
-### "Route not found"
-- Make sure both addresses are valid
-- Try more specific addresses (include city name)
-- Check that you have internet connection
+### Common Issues
 
-### Map not loading
-- Refresh the page
-- Check browser console for errors (F12 → Console)
-- Make sure JavaScript is enabled
+| Problem | Solution |
+|---------|----------|
+| Map not loading | Check GOOGLE_MAPS_API_KEY in .env |
+| Routes not calculating | Verify Routes API is enabled in Google Cloud |
+| Database connection failed | Check DATABASE_URL format |
+| GPS not working | Must be on HTTPS or localhost |
+| CORS errors | Ensure backend is running on port 3001 |
 
-### GPS not working
-- Allow location permissions when prompted
-- Make sure you're on HTTPS or localhost
-- Try on a mobile device for better GPS
+### Debug Logging
+
+Open browser DevTools (F12) → Console. Look for:
+- `[ServiceName]` prefixed logs from backend services
+- Error stack traces
 
 ---
 
-## Credits
+## Production Deployment
 
-Built with love for safer communities.
+### Environment Variables
 
-- Maps: [OpenStreetMap](https://www.openstreetmap.org/)
-- Routing: [OSRM](http://project-osrm.org/)
-- Crime Data: [SF Open Data](https://datasf.org/)
-- Map Library: [Leaflet](https://leafletjs.com/)
+Set these in production:
+- `NODE_ENV=production`
+- `JWT_SECRET` (strong random string)
+- `DATABASE_URL` (production database)
+- All API keys
+
+### Security Checklist
+
+- [ ] Strong JWT_SECRET
+- [ ] HTTPS enabled
+- [ ] Rate limiting configured
+- [ ] Database credentials secured
+- [ ] API keys restricted by domain
+
+---
+
+## License
+
+Private - All rights reserved.
+
+---
+
+## Architecture
+
+For detailed architecture documentation, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+---
+
+Built with care for safer communities.

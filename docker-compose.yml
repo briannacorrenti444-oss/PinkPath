@@ -1,0 +1,115 @@
+# ==============================================
+# PinkPath Docker Compose Configuration
+# Development environment with hot-reload
+# ==============================================
+# Usage:
+#   Start all services:    docker-compose up
+#   Start in background:   docker-compose up -d
+#   View logs:             docker-compose logs -f
+#   Stop services:         docker-compose down
+#   Reset database:        docker-compose down -v
+# ==============================================
+
+services:
+  # ----------------------------------------------
+  # PostgreSQL Database
+  # ----------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: pinkpath-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pinkpath
+      POSTGRES_PASSWORD: pinkpath_dev_password
+      POSTGRES_DB: pinkpath
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pinkpath -d pinkpath"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - pinkpath-network
+
+  # ----------------------------------------------
+  # Backend API Server
+  # ----------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: pinkpath-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+      FRONTEND_URL: "*"
+      DATABASE_URL: postgresql://pinkpath:pinkpath_dev_password@postgres:5432/pinkpath
+      # These will be overridden by .env file
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-change-in-production}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      DATASF_APP_TOKEN: ${DATASF_APP_TOKEN:-}
+    ports:
+      - "3001:3001"
+    volumes:
+      # Mount source for hot-reload in development
+      - ./backend/src:/app/src:ro
+      - ./shared:/app/shared:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - pinkpath-network
+
+  # ----------------------------------------------
+  # Frontend Web Server
+  # ----------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pinkpath-web
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - pinkpath-network
+
+# ----------------------------------------------
+# Volumes
+# ----------------------------------------------
+volumes:
+  postgres_data:
+    name: pinkpath-postgres-data
+
+# ----------------------------------------------
+# Networks
+# ----------------------------------------------
+networks:
+  pinkpath-network:
+    name: pinkpath-network
+    driver: bridge

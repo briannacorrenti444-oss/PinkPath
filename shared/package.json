@@ -1,0 +1,7 @@
+{
+  "name": "@pinkpath/shared",
+  "version": "1.0.0",
+  "description": "Shared constants and types for PinkPath",
+  "main": "index.js",
+  "type": "module"
+}

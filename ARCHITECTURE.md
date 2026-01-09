@@ -1,382 +1,422 @@
 # PinkPath Architecture Guide
 
-This document explains how the PinkPath codebase is organized and how data flows through the app. It's written for beginners who are new to the project.
+This document explains how the PinkPath codebase is organized and how data flows through the app.
 
 ---
 
 ## Table of Contents
 
 1. [The Big Picture](#the-big-picture)
-2. [File Structure](#file-structure)
-3. [The Three Layers](#the-three-layers)
-4. [Data Flow](#data-flow)
-5. [State Management](#state-management)
-6. [Key Functions](#key-functions)
+2. [Monorepo Structure](#monorepo-structure)
+3. [Backend Architecture](#backend-architecture)
+4. [Frontend Architecture](#frontend-architecture)
+5. [Data Flow](#data-flow)
+6. [The Path Algorithm](#the-path-algorithm)
 7. [External APIs](#external-apis)
+8. [Configuration](#configuration)
 
 ---
 
 ## The Big Picture
 
-PinkPath is a **single-page web application** (SPA). This means:
-- There's only ONE HTML file (`index.html`)
-- All "screens" are `<section>` elements that get shown/hidden with JavaScript
-- No page reloads when navigating between screens
+PinkPath is a **safety-focused navigation app** for pedestrians in San Francisco. It calculates walking routes and scores them based on:
+- Historical crime data
+- Real-time police dispatch (CAD) data
+- Street lighting conditions
+- Foot traffic estimates
+- Time of day
 
-The app follows a **modular architecture**:
+### High-Level Architecture
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        index.html                           │
-│                    (All screens/UI)                         │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                          FRONTEND                                │
+│              (Google Maps, User Interface)                       │
+└─────────────────────────────────────────────────────────────────┘
                               │
+                              │ HTTP/REST API
                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        script.js                            │
-│              (Main app logic, UI, maps, state)              │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                          BACKEND                                 │
+│                    (Node.js/Fastify)                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │   Routes    │  │  Services   │  │    Integration Layer    │  │
+│  │  (/api/*)   │  │ (data fetch)│  │   (path algorithm)      │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
                               │
            ┌──────────────────┼──────────────────┐
            ▼                  ▼                  ▼
     ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-    │  config.js   │   │   utils.js   │   │  services/   │
-    │  (settings)  │   │  (helpers)   │   │  (API calls) │
+    │  PostgreSQL  │   │  Google APIs │   │  DataSF APIs │
+    │  (database)  │   │  (routing)   │   │  (crime/CAD) │
     └──────────────┘   └──────────────┘   └──────────────┘
 ```
 
 ---
 
-## File Structure
+## Monorepo Structure
+
+The project uses npm workspaces to organize code:
 
 ```
-App V2/
+pinkpath/
 │
-├── index.html              # The single HTML page
-├── styles.css              # All CSS styling
-├── README.md               # Project overview
-├── ARCHITECTURE.md         # This file
+├── package.json              # Root package.json (workspaces)
+├── .env.example              # Environment template
+├── ARCHITECTURE.md           # This file
+├── CLAUDE.md                 # AI assistant guidelines
+├── todo.md                   # Remaining work tracker
 │
-└── js/
-    ├── script.js           # Main application (2000+ lines)
-    │
-    └── modules/
-        ├── config.js       # Configuration constants
-        ├── utils.js        # Helper functions
-        │
-        └── services/       # API service modules
-            ├── crimeService.js      # SF crime data API
-            ├── sunsetService.js     # Sunrise/sunset API
-            ├── safetyService.js     # Safety score calculation
-            └── geocodingService.js  # Address → coordinates
+├── frontend/                 # @pinkpath/frontend
+│   ├── package.json
+│   ├── index.html            # Single-page app
+│   ├── styles.css            # All styling
+│   ├── privacy.html          # Privacy policy
+│   ├── terms.html            # Terms of service
+│   └── js/
+│       ├── script.js         # Main app logic
+│       └── modules/
+│           ├── config.js     # Frontend config
+│           ├── utils.js      # Helper functions
+│           ├── services/     # API client services
+│           ├── controllers/  # UI controllers
+│           └── components/   # Reusable components
+│
+├── backend/                  # @pinkpath/backend
+│   ├── package.json
+│   └── src/
+│       ├── server.js         # Fastify server entry
+│       ├── config/           # Configuration
+│       │   └── index.js      # Centralized config
+│       ├── db/               # Database layer
+│       │   └── connection.js # PostgreSQL + schema
+│       ├── routes/           # API endpoints
+│       │   ├── auth.js       # Authentication
+│       │   ├── routes.js     # Route calculation
+│       │   ├── users.js      # User management
+│       │   └── safety.js     # Safety data
+│       └── services/         # Business logic
+│           ├── integration/
+│           │   └── pathAlgorithm.js  # Core 6 functions
+│           ├── googleRoutesService.js
+│           ├── crimeService.js
+│           ├── lightingService.js
+│           ├── sunsetService.js
+│           ├── footTrafficService.js
+│           └── geocodingService.js
+│
+└── shared/                   # @pinkpath/shared
+    ├── package.json
+    ├── weights.js            # Safety scoring weights
+    └── constants.js          # Shared constants
 ```
-
-### What Each File Does
-
-| File | Purpose | Lines | Complexity |
-|------|---------|-------|------------|
-| `script.js` | Main app: UI, maps, navigation, state | ~4000 | High |
-| `config.js` | API URLs, weights, icons, settings | ~90 | Low |
-| `utils.js` | Math helpers, formatting functions | ~130 | Low |
-| `crimeService.js` | Fetches/processes SF crime data | ~650 | Medium |
-| `sunsetService.js` | Gets sunrise/sunset times | ~155 | Low |
-| `safetyService.js` | Calculates route safety scores | ~430 | Medium |
-| `geocodingService.js` | Converts addresses to lat/lng | ~280 | Low |
 
 ---
 
-## The Three Layers
+## Backend Architecture
 
-The code is organized into three layers:
+### Server (`backend/src/server.js`)
 
-### Layer 1: UI Layer (`script.js`)
-**What it does:** Everything the user sees and interacts with.
+Fastify server with:
+- CORS for frontend communication
+- JWT authentication
+- Route registration
+- Error handling
+- Graceful shutdown
 
-- Shows/hides screens
-- Handles button clicks and form inputs
-- Displays maps using Leaflet
-- Updates text, colors, and visual elements
-- Manages GPS tracking for navigation
+### Routes Layer (`backend/src/routes/`)
 
-**Think of it as:** The "front desk" that talks to users.
+| Route File | Prefix | Purpose |
+|------------|--------|---------|
+| `auth.js` | `/api/auth` | Login, register, OAuth |
+| `routes.js` | `/api/routes` | Route calculation, history |
+| `users.js` | `/api/users` | Profile, preferences, contacts |
+| `safety.js` | `/api/safety` | Crime, lighting, safety scores |
 
-### Layer 2: Service Layer (`services/*.js`)
-**What it does:** Talks to external APIs and does complex calculations.
+### Services Layer (`backend/src/services/`)
 
-- `crimeService.js` → Fetches crime data from SF Open Data
-- `sunsetService.js` → Gets sunrise/sunset times
-- `safetyService.js` → Calculates safety scores
-- `geocodingService.js` → Converts addresses to coordinates
+Each service handles one data domain:
 
-**Think of it as:** The "specialists" that do specific jobs.
+| Service | Data Source | Purpose |
+|---------|-------------|---------|
+| `googleRoutesService.js` | Google Routes API | Get walking routes |
+| `crimeService.js` | DataSF (wg3w-h783, gnap-fj3t) | Crime + CAD data |
+| `lightingService.js` | DataSF (6tt8-ugnj) | Streetlight complaints |
+| `sunsetService.js` | sunrise-sunset.org | Time of day context |
+| `footTrafficService.js` | DataSF + Google Places | Pedestrian activity |
+| `geocodingService.js` | Google Geocoding API | Address conversion |
 
-### Layer 3: Foundation Layer (`config.js`, `utils.js`)
-**What it does:** Provides settings and helper functions.
+### Integration Layer (`backend/src/services/integration/`)
 
-- `config.js` → API URLs, crime weights, map icons
-- `utils.js` → Distance calculation, number formatting
-
-**Think of it as:** The "toolbox" everyone uses.
-
-### How They Connect
+The `pathAlgorithm.js` contains the core 6 functions:
 
 ```
-User clicks "Find Route"
-        │
-        ▼
-┌─────────────────────────────────────────┐
-│  script.js (UI Layer)                   │
-│  - Gets input values                    │
-│  - Shows loading state                  │
-│  - Calls services                       │
-└─────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────────────────┐
-│  geocodingService.js                    │
-│  - Converts "Union Square" → {lat, lng} │
-└─────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────────────────┐
-│  script.js calls Leaflet Routing        │
-│  - Gets walking routes from OSRM        │
-└─────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────────────────┐
-│  safetyService.js                       │
-│  - Calls crimeService for crime data    │
-│  - Calls sunsetService for time of day  │
-│  - Calculates safety score              │
-└─────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────────────────┐
-│  script.js (UI Layer)                   │
-│  - Draws route on map                   │
-│  - Shows safety score                   │
-│  - Updates UI elements                  │
-└─────────────────────────────────────────┘
+calculateSafeRoutes()
+    │
+    ├── 1. getGoogleRoutePaths()      → Get 8 route options
+    ├── 2. appendCrimeData()          → Add crime to segments
+    ├── 3. appendLightingAndTraffic() → Add lighting + foot traffic
+    ├── 4. getSunsetSunriseData()     → Get time context
+    ├── 5. scorePaths()               → Calculate safety scores
+    └── 6. selectPaths()              → Pick Safest, Fastest, Happy Medium
+```
+
+### Database Layer (`backend/src/db/`)
+
+PostgreSQL with tables:
+- `users` - User accounts (bcrypt passwords)
+- `contacts` - Emergency contacts
+- `safety_preferences` - User safety settings
+- `crime_data_cache` - Cached crime data
+- `streetlight_cache` - Cached lighting data
+- `transit_stops` - SFMTA transit stops
+- `route_history` - Saved routes
+
+---
+
+## Frontend Architecture
+
+### Current State
+
+The frontend currently uses **Leaflet + OpenStreetMap** for maps.
+
+**Pending migration to:**
+- Google Maps JavaScript API
+- Backend API integration
+
+### Screens (in index.html)
+
+1. **Home Screen** - Welcome, start route planning
+2. **Route Planning** - Enter origin/destination
+3. **Route Results** - View routes on map, safety scores
+4. **Navigation** - Turn-by-turn directions
+5. **Settings** - User preferences
+
+### JavaScript Modules
+
+```
+frontend/js/
+├── script.js              # Main entry, state management
+└── modules/
+    ├── config.js          # API URLs, map settings
+    ├── utils.js           # Distance calc, formatting
+    ├── services/
+    │   ├── crimeService.js     # (will call backend)
+    │   ├── geocodingService.js # (will call backend)
+    │   ├── safetyService.js    # Safety score display
+    │   └── sunsetService.js    # (will call backend)
+    ├── controllers/
+    │   ├── mapController.js    # Map interactions
+    │   ├── routeController.js  # Route logic
+    │   ├── searchController.js # Address search
+    │   └── safetyController.js # Safety display
+    └── components/
+        └── routePlanner.js     # Route planning UI
 ```
 
 ---
 
 ## Data Flow
 
-### Flow 1: Finding a Route
+### Route Calculation Flow
 
 ```
-1. USER: Types "Starbucks" in destination box
-                    │
-                    ▼
-2. geocodingService.searchAddresses("Starbucks")
-   → Returns: [{lat: 37.78, lng: -122.41, name: "Starbucks..."}]
-                    │
-                    ▼
-3. USER: Clicks "Find Safest Route"
-                    │
-                    ▼
-4. script.js → Leaflet Routing Machine → OSRM API
-   → Returns: 2 walking routes with coordinates
-                    │
-                    ▼
-5. FOR EACH ROUTE:
-   └── safetyService.calculateSafetyScore(route)
-       ├── crimeService.queryCrimesAlongRoute(route)
-       │   → Returns: [{type: "Robbery", lat: 37.77, ...}, ...]
-       ├── sunsetService.getSunriseSunset(lat, lng)
-       │   → Returns: {sunrise: "6:30 AM", sunset: "7:45 PM"}
-       └── Calculate weighted score
-           → Returns: {score: 7.5, label: "Good", ...}
-                    │
-                    ▼
-6. script.js updates state:
-   - routeOptions = [route1Data, route2Data]
-   - selectedRouteIndex = 0 (safest)
-   - currentRouteData = {distance, duration, safetyScore, ...}
-                    │
-                    ▼
-7. script.js updates UI:
-   - drawOmbreRoute() → colored route on map
-   - updateSafetyDisplay() → safety score badge
-   - updateRouteComparisonUI() → route cards
+User: "Navigate from A to B"
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Frontend                                                     │
+│  POST /api/routes/calculate { start, destination }           │
+└──────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Backend: pathAlgorithm.calculateSafeRoutes()                │
+│                                                               │
+│  1. getGoogleRoutePaths()                                    │
+│     └── Google Routes API → 8 walking routes                 │
+│                                                               │
+│  2. appendCrimeData()                                        │
+│     └── DataSF Crime API → crime stats per segment           │
+│                                                               │
+│  3. appendLightingAndTraffic()                               │
+│     ├── DataSF 311 API → streetlight complaints              │
+│     └── DataSF Transit API → transit stop proximity          │
+│                                                               │
+│  4. getSunsetSunriseData()                                   │
+│     └── sunrise-sunset.org → is it dark?                     │
+│                                                               │
+│  5. scorePaths()                                             │
+│     └── Weighted algorithm → safety score 0-100              │
+│                                                               │
+│  6. selectPaths()                                            │
+│     └── Pick: Safest, Fastest, Happy Medium                  │
+└──────────────────────────────────────────────────────────────┘
+        │
+        ▼
+Response: {
+  safest: { route, score: 87, ... },
+  fastest: { route, score: 72, ... },
+  balanced: { route, score: 81, ... }
+}
 ```
 
-### Flow 2: Switching Routes
+### Safety Score Calculation
 
 ```
-1. USER: Clicks "Route 2" card
-                    │
-                    ▼
-2. selectRoute(1)
-   ├── selectedRouteIndex = 1
-   ├── Redraw routes (swap solid/dashed)
-   ├── Update currentRoute, currentRouteData
-   ├── Update crime markers
-   └── Update all UI displays
-```
+Safety Score = Σ(weight × factor_score) × time_modifier
 
-### Flow 3: Starting Navigation
+Factors and Weights (configurable in shared/weights.js):
+┌─────────────────────┬────────┬─────────────────────────────────┐
+│ Factor              │ Weight │ What It Measures                │
+├─────────────────────┼────────┼─────────────────────────────────┤
+│ Historical Crime    │ 0.35   │ Past 90 days crime nearby       │
+│ Real-time CAD       │ 0.15   │ Current police activity         │
+│ Street Lighting     │ 0.20   │ 311 complaints + time of day    │
+│ Foot Traffic        │ 0.15   │ Transit proximity, place activity│
+│ Time of Day         │ 0.15   │ Daylight vs night modifier      │
+└─────────────────────┴────────┴─────────────────────────────────┘
 
-```
-1. USER: Clicks "Start Navigation"
-                    │
-                    ▼
-2. checkIfAtStartPoint()
-   → Are they within 0.25 miles of start?
-   → Sets isPreviewMode (true = far away, false = at start)
-                    │
-                    ▼
-3. startNavigation()
-   ├── isNavigating = true
-   ├── Go to navigation screen
-   └── displayRouteOnNavigationMap()
-                    │
-                    ▼
-4. IF not in preview mode:
-   └── startGPSTracking()
-       └── navigator.geolocation.watchPosition()
-           → Continuously updates currentUserPosition
-           → Calls updateNavigationPosition() on each update
-                    │
-                    ▼
-5. updateNavigationPosition()
-   ├── Update marker position on map
-   ├── Check if user reached next step
-   ├── Check if user is off-route
-   └── Update distance to destination
+Time Modifiers:
+- Daylight:   1.0 (no penalty)
+- Twilight:   0.95
+- Night:      0.85
+- Late Night: 0.75 (midnight-5am)
+
+Score Curve: Applied to normalize distribution (like school grades)
 ```
 
 ---
 
-## State Management
+## The Path Algorithm
 
-### What is "State"?
+### The 6 Core Functions
 
-State = the current data the app is working with.
+#### 1. `getGoogleRoutePaths(start, destination)`
+- Calls Google Routes API
+- Requests up to 8 walking routes
+- Returns array of route objects with polylines
 
-All state is stored as variables at the top of `script.js`, organized into groups:
+#### 2. `appendCrimeData(paths)`
+- For each route segment, query nearby crimes
+- Calculate crime density per 100m
+- Tag violent vs property crimes
+- Returns paths with crime metadata
 
-### State Groups
+#### 3. `appendLightingAndTraffic(paths, sunData)`
+- Query streetlight 311 complaints near route
+- Query transit stops for foot traffic proxy
+- Apply time-of-day adjustments
+- Returns paths with lighting/traffic scores
 
-```javascript
-// 1. MAP STATE - Leaflet map objects
-let routeMap = null;              // Map on route results screen
-let navigationMap = null;         // Map on navigation screen
-let ombreRouteLayer = null;       // The colored route line
-let crimeMarkerClusterGroup = null; // Crime markers
+#### 4. `getSunsetSunriseData(lat, lng)`
+- Get current sunrise/sunset times
+- Determine time period (day/twilight/night/lateNight)
+- Calculate minutes until dark
+- Returns sun context object
 
-// 2. LOCATION STATE - Where the user wants to go
-let selectedStart = null;         // {lat, lng, name}
-let selectedDestination = null;   // {lat, lng, name}
-let currentUserLocation = null;   // From "Use My Location"
-let currentUserPosition = null;   // Live GPS during navigation
+#### 5. `scorePaths(paths, sunData)`
+- Apply weighted algorithm from shared/weights.js
+- Calculate score for each path
+- Apply score curve for distribution
+- Returns paths with safety scores
 
-// 3. ROUTE STATE - The calculated routes
-let currentRoute = null;          // The selected route object
-let routeOptions = [];            // All route options [route1, route2]
-let selectedRouteIndex = 0;       // Which route is selected (0 or 1)
-let currentRouteData = {          // Details about selected route
-    distance: null,
-    duration: null,
-    safetyScore: null,
-    // ... more fields
-};
-
-// 4. NAVIGATION STATE - Turn-by-turn status
-let isNavigating = false;         // Is navigation active?
-let isPreviewMode = false;        // Preview vs live GPS mode
-let currentStepIndex = 0;         // Current instruction step
-let routeSteps = [];              // Turn-by-turn instructions
-
-// 5. UI STATE - Visual preferences
-let currentMode = 'light';        // Light or dark map mode
-```
-
-### State Flow Diagram
-
-```
-User Action                     State Changes                 UI Updates
-───────────────────────────────────────────────────────────────────────────
-Select address          →  selectedStart/Destination   →  Input field filled
-Click "Find Route"      →  routeOptions, currentRoute  →  Map shows routes
-                           currentRouteData               Safety score shown
-Click "Route 2"         →  selectedRouteIndex          →  Route 2 highlighted
-                           currentRoute, currentRouteData  Map redraws routes
-Click "Start Nav"       →  isNavigating = true         →  Navigation screen
-GPS update              →  currentUserPosition         →  Marker moves on map
-```
-
----
-
-## Key Functions
-
-### The Most Important Functions
-
-| Function | What It Does | Called When |
-|----------|--------------|-------------|
-| `calculateAndDisplayRoute()` | Calculates routes, gets safety scores, draws on map | User clicks "Find Route" |
-| `selectRoute()` | Switches between route options | User clicks a route card |
-| `drawOmbreRoute()` | Draws color-coded route line | After route calculation |
-| `startNavigation()` | Begins turn-by-turn navigation | User clicks "Start Navigation" |
-| `updateNavigationPosition()` | Handles GPS updates | Every GPS position change |
-
-### Function Call Hierarchy
-
-```
-User clicks "Find Safest Route"
-    │
-    └── findRoute()
-            │
-            └── calculateAndDisplayRoute()
-                    │
-                    ├── Leaflet Routing Machine (external)
-                    │
-                    └── [on routes found]
-                            │
-                            ├── calculateSafetyScore() ← safetyService
-                            │       │
-                            │       ├── queryCrimesAlongRoute() ← crimeService
-                            │       └── getSunriseSunset() ← sunsetService
-                            │
-                            ├── drawOmbreRoute()
-                            │       │
-                            │       └── getSegmentColor()
-                            │
-                            ├── addCrimeMarkersToMap()
-                            │
-                            ├── updateRouteDisplay()
-                            ├── updateSafetyDisplay()
-                            └── updateRouteComparisonUI()
-```
+#### 6. `selectPaths(scoredPaths)`
+- Sort by safety score → pick safest
+- Sort by duration → pick fastest
+- Calculate balanced score → pick happy medium
+- Returns { safest, fastest, balanced }
 
 ---
 
 ## External APIs
 
-PinkPath uses these free, open APIs:
+### Google APIs (requires API key)
 
-| API | What It Does | Module |
-|-----|--------------|--------|
-| **OSRM** | Calculates walking routes | Leaflet Routing Machine |
-| **OpenStreetMap** | Provides map tiles (images) | Leaflet |
-| **Nominatim** | Converts addresses to coordinates | geocodingService.js |
-| **SF Open Data** | Provides San Francisco crime data | crimeService.js |
-| **Sunrise-Sunset API** | Gets sunrise/sunset times | sunsetService.js |
+| API | Purpose | Endpoint |
+|-----|---------|----------|
+| Routes API | Walking directions | routes.googleapis.com |
+| Geocoding API | Address → coordinates | maps.googleapis.com/geocode |
+| Places API | Autocomplete, place details | maps.googleapis.com/place |
 
-### API Flow Example
+### DataSF APIs (free, app token recommended)
 
+| Dataset | ID | Purpose |
+|---------|-----|---------|
+| Police Incidents | wg3w-h783 | Historical crime (90 days) |
+| CAD Dispatch | gnap-fj3t | Real-time police activity |
+| 311 Cases | 6tt8-ugnj | Streetlight complaints |
+| Transit Stops | i28k-ysrd | SFMTA bus/rail stops |
+
+### Other APIs
+
+| API | Purpose | Cost |
+|-----|---------|------|
+| sunrise-sunset.org | Sun times | Free |
+
+---
+
+## Configuration
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and fill in:
+
+```bash
+# Required
+GOOGLE_MAPS_API_KEY=your_key    # Get from Google Cloud Console
+DATABASE_URL=postgres://...      # PostgreSQL connection
+JWT_SECRET=random_string         # For authentication
+
+# Optional (has defaults)
+DATASF_APP_TOKEN=your_token     # Higher rate limits
+PORT=3001                        # Backend port
 ```
-geocodingService.geocodeAddress("Starbucks, SF")
-        │
-        ▼
-HTTPS Request to: https://nominatim.openstreetmap.org/search?q=Starbucks...
-        │
-        ▼
-Response: [{lat: "37.7749", lon: "-122.4194", display_name: "Starbucks..."}]
-        │
-        ▼
-Return: {lat: 37.7749, lng: -122.4194, name: "Starbucks..."}
+
+### Weights Configuration
+
+Edit `shared/weights.js` to adjust scoring:
+
+```javascript
+export const SAFETY_WEIGHTS = {
+  crime: 0.35,        // Historical crime importance
+  realtimeCrime: 0.15, // Current CAD importance
+  lighting: 0.20,      // Street lighting importance
+  footTraffic: 0.15,   // Foot traffic importance
+  timeOfDay: 0.15,     // Time modifier importance
+};
+```
+
+---
+
+## Development Workflow
+
+### Starting the Backend
+
+```bash
+# From root
+npm install
+cd backend
+npm run dev
+# Server at http://localhost:3001
+```
+
+### Starting the Frontend
+
+```bash
+# From root
+cd frontend
+npm run dev
+# Serves at http://localhost:3000
+```
+
+### Running Both
+
+```bash
+# From root
+npm run dev
+# Uses concurrently to run both
 ```
 
 ---
@@ -387,44 +427,33 @@ Return: {lat: 37.7749, lng: -122.4194, name: "Starbucks..."}
 
 | I want to... | Look in... |
 |--------------|------------|
-| Change API settings | `config.js` |
-| Change crime severity weights | `config.js` → `CRIME_WEIGHTS` |
-| Change safety score calculation | `safetyService.js` |
-| Change route appearance | `drawOmbreRoute()` in `script.js` |
-| Change navigation behavior | Navigation functions in `script.js` |
-| Add a new screen | `index.html` + `goToScreen()` in `script.js` |
+| Change safety weights | `shared/weights.js` |
+| Add an API endpoint | `backend/src/routes/*.js` |
+| Modify path algorithm | `backend/src/services/integration/pathAlgorithm.js` |
+| Change API config | `backend/src/config/index.js` |
+| Update database schema | `backend/src/db/connection.js` |
+| Modify frontend UI | `frontend/index.html` + `frontend/js/script.js` |
 
 ### Common Patterns
 
-**Calling a service:**
+**Calling a backend service:**
 ```javascript
-import { functionName } from './modules/services/serviceName.js';
-const result = await functionName(params);
+// In a route handler
+import { getCrimeData } from '../services/crimeService.js';
+const crimes = await getCrimeData(lat, lng, radius);
 ```
 
-**Updating state:**
+**Adding a new API endpoint:**
 ```javascript
-selectedRouteIndex = newValue;
-// Then update UI:
-updateRouteComparisonUI();
-```
-
-**Drawing on map:**
-```javascript
-const layer = L.polyline(coordinates, options);
-layer.addTo(map);
-// Save reference to remove later:
-myLayerVariable = layer;
+// In routes/*.js
+fastify.get('/new-endpoint', {
+  schema: { querystring: { type: 'object', properties: {...} } }
+}, async (request, reply) => {
+  // Handler logic
+  return reply.send({ success: true, data: ... });
+});
 ```
 
 ---
 
-## Next Steps for New Developers
-
-1. **Read README.md** - Get the big picture
-2. **Read this file** - Understand the architecture
-3. **Open script.js** - Read the STATE section at the top
-4. **Try the app** - Open index.html in a browser
-5. **Add console.logs** - See how data flows
-6. **Make a small change** - Modify a color or text
-7. **Break something** - Then fix it (best way to learn!)
+Last updated: January 2026

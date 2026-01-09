@@ -1,0 +1,14 @@
+{
+  "name": "@pinkpath/frontend",
+  "version": "1.0.0",
+  "description": "PinkPath frontend web application",
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve . -p 3000",
+    "test": "node --experimental-vm-modules ../node_modules/jest/bin/jest.js"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "serve": "^14.2.1"
+  }
+}

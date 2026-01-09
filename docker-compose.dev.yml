@@ -1,0 +1,37 @@
+# ==============================================
+# PinkPath Docker Compose - Development Overrides
+# ==============================================
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Or set COMPOSE_FILE in your shell:
+#   export COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml
+#   docker-compose up
+# ==============================================
+
+services:
+  # ----------------------------------------------
+  # Backend with hot-reload
+  # ----------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./shared:/app/shared:ro
+    command: npm run dev
+    environment:
+      NODE_ENV: development
+
+  # ----------------------------------------------
+  # Frontend with live files (rebuild required)
+  # ----------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf:/etc/nginx/nginx.conf:ro
