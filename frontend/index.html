@@ -7,6 +7,18 @@
     <link rel="stylesheet" href="styles.css?v=4">
 
     <!-- Google Maps JavaScript API -->
+    <!--
+    SECURITY NOTE: The Google Maps API key below should be:
+    1. Restricted in Google Cloud Console to only your domains (HTTP referrer restrictions)
+    2. Limited to only Maps JavaScript API, Places API, and Geometry library
+    3. Have quota limits set to prevent unexpected billing
+
+    For production:
+    - Create a separate production key with strict domain restrictions
+    - Never use unrestricted API keys
+
+    See: https://developers.google.com/maps/api-security-best-practices
+    -->
     <script>
         // Google Maps initialization callback
         window.initGoogleMaps = function() {
@@ -15,7 +27,7 @@
         };
     </script>
     <script async defer
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB5onxqvR1rbC8nyX8ExG83Zx-eOgFPMQ4&libraries=places,marker,geometry&callback=initGoogleMaps&v=weekly">
+        src="https://maps.googleapis.com/maps/api/js?key=GOOGLE_MAPS_API_KEY_PLACEHOLDER&libraries=places,marker,geometry&callback=initGoogleMaps&v=weekly">
     </script>
 
     <!-- MarkerClusterer for Google Maps (crime clustering) -->

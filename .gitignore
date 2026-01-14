@@ -21,3 +21,4 @@ Thumbs.db
 
 # Docker volumes
 postgres_data/
+tmpclaude-*

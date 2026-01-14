@@ -1,61 +1,18 @@
 // ========================================
 // ROUTE CONTROLLER - Google Maps Version
-// Handles route drawing, sampling, and crime markers
+// Handles route drawing and crime markers
 // ========================================
 
 import { calculateDistance } from '../utils.js';
 
 /**
- * Sample points along a route at regular distance intervals
- *
- * @param {Array<{lat: number, lng: number}>} coordinates - Route coordinates
- * @param {number} intervalMiles - Distance between sample points (e.g., 0.15 miles)
- * @returns {Array<{lat: number, lng: number}>} Sampled points along the route
- */
-export function sampleRoutePoints(coordinates, intervalMiles) {
-    const samplePoints = [];
-
-    // Always include start point
-    if (coordinates.length > 0) {
-        const start = coordinates[0];
-        samplePoints.push({ lat: start.lat, lng: start.lng });
-    }
-
-    // Sample intermediate points
-    let accumulatedDistance = 0;
-    let lastSampleDistance = 0;
-
-    for (let i = 1; i < coordinates.length; i++) {
-        const prev = coordinates[i - 1];
-        const curr = coordinates[i];
-
-        // Calculate distance between consecutive points
-        const segmentDistance = calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng);
-        accumulatedDistance += segmentDistance;
-
-        // Add sample point if we've traveled the interval distance
-        if (accumulatedDistance - lastSampleDistance >= intervalMiles) {
-            samplePoints.push({ lat: curr.lat, lng: curr.lng });
-            lastSampleDistance = accumulatedDistance;
-        }
-    }
-
-    // Always include end point
-    if (coordinates.length > 1) {
-        const end = coordinates[coordinates.length - 1];
-        samplePoints.push({ lat: end.lat, lng: end.lng });
-    }
-
-    return samplePoints;
-}
-
-/**
  * Gets the color for a route segment based on crime count
+ * Internal helper function for ombre route drawing
  *
  * @param {number} crimeCount - Number of crimes in segment
  * @returns {string} Hex color code
  */
-export function getSegmentColor(crimeCount) {
+function getSegmentColor(crimeCount) {
     // Absolute scale: crimes per 0.15 mile segment
     if (crimeCount === 0) return '#48bb78'; // Green - no crimes
     if (crimeCount <= 2) return '#68d391'; // Light green - very few crimes

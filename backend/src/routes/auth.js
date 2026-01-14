@@ -4,8 +4,54 @@
  */
 
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { query } from '../db/connection.js';
 import { authConfig } from '../config/index.js';
+
+// SECURITY: In-memory store for OAuth state tokens
+// In production with multiple instances, use Redis instead
+const oauthStateStore = new Map();
+const STATE_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Generate a secure OAuth state token
+ * @returns {string} Secure random state token
+ */
+function generateOAuthState() {
+  const state = crypto.randomBytes(32).toString('hex');
+  oauthStateStore.set(state, Date.now());
+  return state;
+}
+
+/**
+ * Validate an OAuth state token
+ * @param {string} state - State token to validate
+ * @returns {boolean} True if valid and not expired
+ */
+function validateOAuthState(state) {
+  const timestamp = oauthStateStore.get(state);
+  if (!timestamp) return false;
+
+  // Check expiry
+  if (Date.now() - timestamp > STATE_EXPIRY_MS) {
+    oauthStateStore.delete(state);
+    return false;
+  }
+
+  // Use once - delete after validation
+  oauthStateStore.delete(state);
+  return true;
+}
+
+// Cleanup expired states periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [state, timestamp] of oauthStateStore.entries()) {
+    if (now - timestamp > STATE_EXPIRY_MS) {
+      oauthStateStore.delete(state);
+    }
+  }
+}, 60000); // Every minute
 
 /**
  * Auth routes plugin for Fastify
@@ -203,6 +249,7 @@ export default async function authRoutes(fastify) {
    * GET /api/auth/google
    * Initiate Google OAuth flow
    * Redirects to Google's OAuth consent page
+   * SECURITY: Uses cryptographically secure state parameter
    */
   fastify.get('/google', async (request, reply) => {
     const { clientId } = authConfig.google;
@@ -216,7 +263,8 @@ export default async function authRoutes(fastify) {
 
     const redirectUri = encodeURIComponent(authConfig.google.callbackUrl);
     const scope = encodeURIComponent('email profile');
-    const state = Buffer.from(JSON.stringify({ timestamp: Date.now() })).toString('base64');
+    // SECURITY: Generate cryptographically secure state token
+    const state = generateOAuthState();
 
     const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${clientId}` +
@@ -233,12 +281,20 @@ export default async function authRoutes(fastify) {
   /**
    * GET /api/auth/google/callback
    * Handle Google OAuth callback
+   * SECURITY: Validates state parameter to prevent CSRF attacks
    */
   fastify.get('/google/callback', async (request, reply) => {
-    const { code, error } = request.query;
+    const { code, error, state } = request.query;
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
     if (error) {
-      return reply.redirect(`${authConfig.google.callbackUrl}?error=${error}`);
+      return reply.redirect(`${frontendUrl}/auth/callback?error=${error}`);
+    }
+
+    // SECURITY: Validate state parameter to prevent CSRF
+    if (!state || !validateOAuthState(state)) {
+      fastify.log.warn('OAuth callback with invalid state parameter');
+      return reply.redirect(`${frontendUrl}/auth/callback?error=invalid_state`);
     }
 
     if (!code) {
@@ -322,12 +378,11 @@ export default async function authRoutes(fastify) {
       });
 
       // Redirect to frontend with token
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      // Note: Token in URL is standard for OAuth callbacks, but ensure HTTPS in production
       return reply.redirect(`${frontendUrl}/auth/callback?token=${token}`);
 
     } catch (error) {
       fastify.log.error('Google OAuth error:', error);
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       return reply.redirect(`${frontendUrl}/auth/callback?error=oauth_failed`);
     }
   });

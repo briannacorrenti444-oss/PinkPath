@@ -17,8 +17,11 @@ const { Pool } = pg;
 // DATABASE CONFIGURATION
 // ==============================================
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 /**
  * PostgreSQL connection pool configuration
+ * SECURITY: SSL required in production to encrypt database connections
  */
 const poolConfig = {
   connectionString: process.env.DATABASE_URL,
@@ -27,12 +30,18 @@ const poolConfig = {
   port: parseInt(process.env.DB_PORT || '5432', 10),
   database: process.env.DB_NAME || 'pinkpath',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
+  password: process.env.DB_PASSWORD,
 
   // Pool settings
   max: 20,                // Maximum connections in pool
   idleTimeoutMillis: 30000,    // Close idle clients after 30s
   connectionTimeoutMillis: 5000, // Return error after 5s if can't connect
+
+  // SECURITY: SSL configuration for production
+  // Render and most cloud providers require SSL connections
+  ssl: isProduction ? {
+    rejectUnauthorized: false, // Required for Render/Heroku managed certs
+  } : false,
 };
 
 /**
