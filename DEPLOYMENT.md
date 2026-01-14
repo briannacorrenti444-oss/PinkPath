@@ -1,6 +1,6 @@
 # PinkPath Deployment Guide
 
-This guide walks you through deploying PinkPath to production using **Netlify** (frontend) and **Railway** (backend + database).
+This guide walks you through deploying PinkPath to production using **Netlify** (frontend) and **Render** (backend + database).
 
 ## Prerequisites
 
@@ -12,31 +12,49 @@ Before starting, ensure you have:
 
 ---
 
-## Part 1: Deploy Backend to Railway
+## Part 1: Deploy Backend to Render
 
-### Step 1.1: Create Railway Account
+### Step 1.1: Create Render Account
 
-1. Go to [railway.app](https://railway.app)
+1. Go to [render.com](https://render.com)
 2. Sign up with GitHub (recommended for auto-deploy)
 
-### Step 1.2: Create New Project
+### Step 1.2: Create New Web Service
 
-1. Click **"New Project"**
-2. Select **"Deploy from GitHub repo"**
-3. Find and select your PinkPath repository
-4. Railway will detect the `railway.toml` configuration
+1. Click **"New +"** → **"Web Service"**
+2. Connect your GitHub repository (PinkPath)
+3. Configure the service:
 
-### Step 1.3: Add PostgreSQL Database
+| Setting | Value |
+|---------|-------|
+| Name | `pinkpath-backend` |
+| Region | Oregon (US West) |
+| Branch | `main` |
+| Root Directory | `backend` |
+| Runtime | Node |
+| Build Command | `npm ci --omit=dev` |
+| Start Command | `node src/server.js` |
+| Plan | Free |
 
-1. In your Railway project, click **"New"**
-2. Select **"Database"** → **"PostgreSQL"**
-3. Railway automatically creates `DATABASE_URL` environment variable
+4. Click **"Create Web Service"**
+
+### Step 1.3: Create PostgreSQL Database
+
+1. Click **"New +"** → **"PostgreSQL"**
+2. Configure:
+
+| Setting | Value |
+|---------|-------|
+| Name | `pinkpath-db` |
+| Region | Oregon (same as backend) |
+| Plan | Free |
+
+3. Click **"Create Database"**
+4. Copy the **"Internal Database URL"** (starts with `postgres://`)
 
 ### Step 1.4: Set Environment Variables
 
-In Railway dashboard, go to your service → **"Variables"** tab.
-
-Add these variables:
+Go to your web service → **"Environment"** tab → **"Add Environment Variable"**
 
 | Variable | Value |
 |----------|-------|
@@ -48,20 +66,17 @@ Add these variables:
 | `GOOGLE_CLIENT_SECRET` | From Google Cloud Console |
 | `GOOGLE_MAPS_API_KEY` | From Google Cloud Console |
 | `DATASF_APP_TOKEN` | From DataSF |
+| `DATABASE_URL` | Paste the Internal Database URL from Step 1.3 |
 
-### Step 1.5: Deploy
+Click **"Save Changes"** - Render will auto-redeploy.
 
-1. Railway auto-deploys when you push to GitHub
-2. Or click **"Deploy"** manually
-3. Wait for build to complete (2-3 minutes)
-4. Click on the deployment to see the URL (e.g., `pinkpath-backend-production.up.railway.app`)
+### Step 1.5: Verify Backend
 
-### Step 1.6: Verify Backend
+Once deployed, your URL will be: `https://pinkpath-backend.onrender.com`
 
-Test your backend is running:
-
+Test it:
 ```bash
-curl https://YOUR-RAILWAY-URL.up.railway.app/health
+curl https://pinkpath-backend.onrender.com/health
 ```
 
 Should return:
@@ -69,70 +84,62 @@ Should return:
 {"status":"healthy","timestamp":"...","version":"1.0.0","environment":"production"}
 ```
 
+**Note:** Free tier services spin down after 15 minutes of inactivity. First request after sleep takes ~30 seconds.
+
 ---
 
 ## Part 2: Deploy Frontend to Netlify
 
 ### Step 2.1: Update Frontend Config
 
-Before deploying, update the Railway URL in your code:
+Update the Render URL in your code:
 
 **File:** `frontend/js/modules/config.js`
 
 ```javascript
-const PRODUCTION_API_URL = 'https://YOUR-RAILWAY-URL.up.railway.app'; // <-- Put your Railway URL here
+const PRODUCTION_API_URL = 'https://pinkpath-backend.onrender.com'; // <-- Your actual Render URL
 ```
 
 Commit and push this change.
 
-### Step 2.2: Create Netlify Account
+### Step 2.2: Connect to Netlify
 
-1. Go to [netlify.com](https://www.netlify.com)
-2. Sign up with GitHub (recommended)
+Since you already have Netlify set up:
 
-### Step 2.3: Create New Site
+1. Go to your Netlify dashboard
+2. Click **"Add new site"** → **"Import an existing project"**
+3. Connect to GitHub → Select PinkPath repository
 
-1. Click **"Add new site"** → **"Import an existing project"**
-2. Connect to GitHub
-3. Select your PinkPath repository
-
-### Step 2.4: Configure Build Settings
-
-Netlify should auto-detect settings from `netlify.toml`, but verify:
+### Step 2.3: Configure Build Settings
 
 | Setting | Value |
 |---------|-------|
 | Base directory | (leave empty) |
-| Build command | (leave empty) |
+| Build command | (leave empty - static files) |
 | Publish directory | `frontend` |
 
-### Step 2.5: Deploy
+### Step 2.4: Deploy
 
 1. Click **"Deploy site"**
 2. Wait for deployment (1-2 minutes)
 3. Note your Netlify URL (e.g., `random-name-123.netlify.app`)
 
-### Step 2.6: Update Railway CORS
+### Step 2.5: Update Render CORS
 
-Now that you have your Netlify URL, go back to Railway:
-
-1. Open Railway dashboard
-2. Go to Variables
-3. Update `FRONTEND_URL` to your Netlify URL (e.g., `https://pinkpath.netlify.app`)
-4. Railway will auto-redeploy
+Go back to Render and update the `FRONTEND_URL` environment variable:
+- Set it to your Netlify URL (e.g., `https://pinkpath.netlify.app`)
+- Render will auto-redeploy
 
 ---
 
 ## Part 3: Update Google OAuth
-
-Your Google OAuth callback URL needs to point to Railway.
 
 ### Step 3.1: Update Google Cloud Console
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
 2. Edit your OAuth 2.0 Client ID
 3. Add to **Authorized redirect URIs**:
-   - `https://YOUR-RAILWAY-URL.up.railway.app/api/auth/google/callback`
+   - `https://pinkpath-backend.onrender.com/api/auth/google/callback`
 4. Save
 
 ---
@@ -141,7 +148,7 @@ Your Google OAuth callback URL needs to point to Railway.
 
 ### Test Checklist
 
-- [ ] **Health Check:** Visit `https://YOUR-RAILWAY-URL.up.railway.app/health`
+- [ ] **Health Check:** Visit `https://YOUR-RENDER-URL.onrender.com/health`
 - [ ] **Frontend Loads:** Visit your Netlify URL
 - [ ] **Map Displays:** Google Maps should load
 - [ ] **Route Calculation:** Try calculating a route
@@ -151,10 +158,11 @@ Your Google OAuth callback URL needs to point to Railway.
 
 | Issue | Solution |
 |-------|----------|
-| CORS errors in console | Check `FRONTEND_URL` in Railway matches your Netlify URL exactly |
-| Map doesn't load | Verify `GOOGLE_MAPS_API_KEY` is set and has correct API restrictions |
-| OAuth fails | Check redirect URI in Google Console matches Railway URL |
-| 500 errors | Check Railway logs for details (`railway logs`) |
+| CORS errors in console | Check `FRONTEND_URL` in Render matches your Netlify URL exactly |
+| "Service unavailable" | Free tier is waking up - wait 30 seconds and retry |
+| Map doesn't load | Verify `GOOGLE_MAPS_API_KEY` is set correctly |
+| OAuth fails | Check redirect URI in Google Console matches Render URL |
+| 500 errors | Check Render logs in dashboard |
 
 ---
 
@@ -164,23 +172,15 @@ Your Google OAuth callback URL needs to point to Railway.
 
 1. In Netlify: **Site settings** → **Domain management** → **Add custom domain**
 2. Add your domain (e.g., `www.pinkpath.com`)
-3. Follow DNS instructions to point your domain to Netlify
+3. Follow DNS instructions
 
-### Railway Custom Domain
+### Render Custom Domain
 
-1. In Railway: **Settings** → **Domains** → **Add Domain**
+1. In Render: **Settings** → **Custom Domains** → **Add Custom Domain**
 2. Add your API domain (e.g., `api.pinkpath.com`)
 3. Update DNS CNAME record
 4. Update `FRONTEND_URL` if your main domain changed
 5. Update Google OAuth redirect URIs
-
-### Update Frontend Config
-
-If using custom domains, update `config.js`:
-
-```javascript
-const PRODUCTION_API_URL = 'https://api.pinkpath.com';
-```
 
 ---
 
@@ -191,59 +191,52 @@ const PRODUCTION_API_URL = 'https://api.pinkpath.com';
 | Service | URL |
 |---------|-----|
 | Frontend (Netlify) | `https://YOUR-APP.netlify.app` |
-| Backend (Railway) | `https://YOUR-APP.up.railway.app` |
-| Health Check | `https://YOUR-APP.up.railway.app/health` |
-| API Info | `https://YOUR-APP.up.railway.app/api` |
+| Backend (Render) | `https://pinkpath-backend.onrender.com` |
+| Health Check | `https://pinkpath-backend.onrender.com/health` |
+| API Info | `https://pinkpath-backend.onrender.com/api` |
 
-### Environment Variables Summary
+### Free Tier Limitations
 
-**Railway (Backend):**
-- `NODE_ENV` = production
-- `FRONTEND_URL` = Netlify URL
-- `JWT_SECRET` = random 64-char hex
-- `SESSION_SECRET` = random 64-char hex
-- `GOOGLE_CLIENT_ID` = from Google
-- `GOOGLE_CLIENT_SECRET` = from Google
-- `GOOGLE_MAPS_API_KEY` = from Google
-- `DATASF_APP_TOKEN` = from DataSF
-- `DATABASE_URL` = auto-set by Railway
+| Service | Limitation |
+|---------|------------|
+| **Render Web Service** | Spins down after 15 min inactivity (30s cold start) |
+| **Render PostgreSQL** | Free for 90 days, then must recreate or upgrade |
+| **Netlify** | 100GB bandwidth/month |
 
-**Netlify (Frontend):**
-- No environment variables needed (config is in code)
+### Costs If You Upgrade
+
+| Service | Free | Paid |
+|---------|------|------|
+| Render Web Service | $0 (with cold starts) | $7/month (always on) |
+| Render PostgreSQL | $0 (90 days) | $7/month |
+| Netlify | $0 | $19/month |
 
 ---
 
 ## Monitoring & Logs
 
-### Railway Logs
+### Render Logs
 
-```bash
-# Install Railway CLI
-npm install -g @railway/cli
-
-# Login
-railway login
-
-# View logs
-railway logs
-```
-
-Or view in Railway dashboard → Deployments → Click deployment → Logs
+1. Go to Render dashboard
+2. Click on your service
+3. Click **"Logs"** tab
 
 ### Netlify Logs
 
-View in Netlify dashboard → Deploys → Click deploy → Deploy log
+1. Go to Netlify dashboard
+2. Click **"Deploys"**
+3. Click on a deploy to see logs
 
 ---
 
 ## Rollback
 
-### Railway
-1. Go to Deployments
-2. Find previous successful deployment
-3. Click **"Redeploy"**
+### Render
+1. Go to your service → **"Events"** tab
+2. Find previous successful deploy
+3. Click **"Rollback to this deploy"**
 
 ### Netlify
-1. Go to Deploys
+1. Go to **"Deploys"**
 2. Find previous successful deploy
 3. Click **"Publish deploy"**

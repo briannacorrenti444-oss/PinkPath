@@ -1,0 +1,66 @@
+# ==============================================
+# PINKPATH RENDER CONFIGURATION
+# ==============================================
+# Render Blueprint - Infrastructure as Code
+# Documentation: https://docs.render.com/blueprint-spec
+# ==============================================
+
+services:
+  # Backend API Service
+  - type: web
+    name: pinkpath-backend
+    runtime: node
+    region: oregon  # or ohio, frankfurt, singapore
+    plan: free      # free tier for beta testing
+
+    # Build configuration
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: node src/server.js
+
+    # Health check
+    healthCheckPath: /health
+
+    # Environment variables
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000  # Render uses port 10000 by default
+      - key: FRONTEND_URL
+        sync: false   # Set manually after Netlify deploy
+      - key: JWT_SECRET
+        generateValue: true  # Render auto-generates secure value
+      - key: SESSION_SECRET
+        generateValue: true  # Render auto-generates secure value
+      - key: GOOGLE_CLIENT_ID
+        sync: false   # Set manually
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false   # Set manually
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false   # Set manually
+      - key: DATASF_APP_TOKEN
+        sync: false   # Set manually
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pinkpath-db
+          property: connectionString
+
+databases:
+  # PostgreSQL Database
+  - name: pinkpath-db
+    plan: free        # Free tier: 90 days, then need to recreate or upgrade
+    databaseName: pinkpath
+    region: oregon    # Same region as backend for low latency
+
+# ==============================================
+# NOTES
+# ==============================================
+# Free tier limitations:
+# - Web services spin down after 15 min inactivity (cold starts ~30s)
+# - PostgreSQL free tier expires after 90 days
+# - 750 hours/month of running time
+#
+# For beta testing with 50-100 users, free tier works fine.
+# Upgrade to paid ($7/month) to remove cold starts.
+# ==============================================

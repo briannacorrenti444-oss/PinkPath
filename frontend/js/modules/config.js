@@ -6,14 +6,14 @@
 // ==============================================
 // PRODUCTION CONFIGURATION
 // ==============================================
-// IMPORTANT: Update PRODUCTION_API_URL with your Railway backend URL
-// after deploying to Railway. Format: https://your-app-name.up.railway.app
+// IMPORTANT: Update PRODUCTION_API_URL with your Render backend URL
+// after deploying to Render. Format: https://your-service-name.onrender.com
 // ==============================================
-const PRODUCTION_API_URL = 'https://pinkpath-backend.up.railway.app'; // <-- UPDATE THIS AFTER RAILWAY DEPLOY
+const PRODUCTION_API_URL = 'https://pinkpath-backend.onrender.com'; // <-- UPDATE THIS AFTER RENDER DEPLOY
 
 // Backend API base URL (without /api suffix - endpoints add it)
 // - localhost: Direct connection to local backend
-// - Production (Netlify): Connect to Railway backend
+// - Production (Netlify): Connect to Render backend
 export const API_BASE_URL = (() => {
     const hostname = window.location.hostname;
 
