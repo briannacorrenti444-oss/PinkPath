@@ -3,10 +3,28 @@
 // Constants, API endpoints, and settings
 // ========================================
 
+// ==============================================
+// PRODUCTION CONFIGURATION
+// ==============================================
+// IMPORTANT: Update PRODUCTION_API_URL with your Railway backend URL
+// after deploying to Railway. Format: https://your-app-name.up.railway.app
+// ==============================================
+const PRODUCTION_API_URL = 'https://pinkpath-backend.up.railway.app'; // <-- UPDATE THIS AFTER RAILWAY DEPLOY
+
 // Backend API base URL (without /api suffix - endpoints add it)
-export const API_BASE_URL = window.location.hostname === 'localhost'
-    ? 'http://localhost:3001'
-    : '';
+// - localhost: Direct connection to local backend
+// - Production (Netlify): Connect to Railway backend
+export const API_BASE_URL = (() => {
+    const hostname = window.location.hostname;
+
+    // Local development
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://localhost:3001';
+    }
+
+    // Production - use Railway backend
+    return PRODUCTION_API_URL;
+})();
 
 // Default location (San Francisco - center of the city)
 export const defaultLocation = { lat: 37.7749, lng: -122.4194 };

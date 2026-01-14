@@ -145,8 +145,7 @@ export const CRIME_SEVERITY = {
  */
 export const CRIME_RECENCY = {
   last24Hours: 1.0,      // Full weight
-  last7Days: 0.8,        // 80% weight
-  last30Days: 0.5,       // 50% weight
+  last30Days: 0.6,       // 60% weight
   last90Days: 0.3,       // 30% weight
 };
 

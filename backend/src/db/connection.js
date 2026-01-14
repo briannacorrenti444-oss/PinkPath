@@ -142,6 +142,11 @@ async function initializeSchema(client) {
   await createTransitStopsTable(client);
   await createRouteHistoryTable(client);
 
+  // Rating system tables
+  await createRatingCategoriesTable(client);
+  await createRouteRatingsTable(client);
+  await createSegmentPinsTable(client);
+
   console.log('[DB] Schema initialization complete');
 }
 
@@ -304,6 +309,99 @@ async function createRouteHistoryTable(client) {
 
     CREATE INDEX IF NOT EXISTS idx_route_history_user_id ON route_history(user_id);
     CREATE INDEX IF NOT EXISTS idx_route_history_created ON route_history(created_at);
+
+    -- Add polyline column if it doesn't exist (for rating correlation)
+    ALTER TABLE route_history ADD COLUMN IF NOT EXISTS polyline TEXT;
+    ALTER TABLE route_history ADD COLUMN IF NOT EXISTS rating_submitted BOOLEAN DEFAULT false;
+  `);
+}
+
+/**
+ * Create rating categories reference table
+ */
+async function createRatingCategoriesTable(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS rating_categories (
+      id SERIAL PRIMARY KEY,
+      code VARCHAR(50) UNIQUE NOT NULL,
+      label VARCHAR(100) NOT NULL,
+      pin_type VARCHAR(10) NOT NULL CHECK (pin_type IN ('safe', 'caution')),
+      is_active BOOLEAN DEFAULT true,
+      display_order INTEGER DEFAULT 0
+    );
+
+    -- Seed default categories if table is empty
+    INSERT INTO rating_categories (code, label, pin_type, display_order)
+    SELECT * FROM (VALUES
+      ('well_lit', 'Well-lit streets', 'safe', 1),
+      ('busy_area', 'Busy area', 'safe', 2),
+      ('police_presence', 'Police/security presence', 'safe', 3),
+      ('open_businesses', 'Open businesses', 'safe', 4),
+      ('good_visibility', 'Good visibility', 'safe', 5),
+      ('dark_poorly_lit', 'Dark/poorly lit', 'caution', 1),
+      ('isolated_empty', 'Isolated/empty', 'caution', 2),
+      ('suspicious_activity', 'Suspicious activity', 'caution', 3),
+      ('unsafe_construction', 'Unsafe construction', 'caution', 4),
+      ('obstructed_visibility', 'Obstructed visibility', 'caution', 5)
+    ) AS v(code, label, pin_type, display_order)
+    WHERE NOT EXISTS (SELECT 1 FROM rating_categories LIMIT 1)
+    ON CONFLICT (code) DO NOTHING;
+  `);
+}
+
+/**
+ * Create route ratings table (overall route feedback after navigation)
+ */
+async function createRouteRatingsTable(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS route_ratings (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      route_history_id INTEGER REFERENCES route_history(id) ON DELETE SET NULL,
+      start_lat DECIMAL(10, 7) NOT NULL,
+      start_lng DECIMAL(10, 7) NOT NULL,
+      end_lat DECIMAL(10, 7) NOT NULL,
+      end_lng DECIMAL(10, 7) NOT NULL,
+      polyline TEXT,
+      rating VARCHAR(10) NOT NULL CHECK (rating IN ('unsafe', 'neutral', 'safe')),
+      reasons JSONB DEFAULT '[]',
+      comment TEXT,
+      was_preview_mode BOOLEAN DEFAULT false,
+      time_of_day VARCHAR(20),
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_route_ratings_user_id ON route_ratings(user_id);
+    CREATE INDEX IF NOT EXISTS idx_route_ratings_created ON route_ratings(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_route_ratings_rating ON route_ratings(rating);
+    CREATE INDEX IF NOT EXISTS idx_route_ratings_location ON route_ratings(start_lat, start_lng, end_lat, end_lng);
+  `);
+}
+
+/**
+ * Create segment pins table (location-specific safety reports)
+ */
+async function createSegmentPinsTable(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS segment_pins (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      route_rating_id INTEGER REFERENCES route_ratings(id) ON DELETE SET NULL,
+      lat DECIMAL(10, 7) NOT NULL,
+      lng DECIMAL(10, 7) NOT NULL,
+      pin_type VARCHAR(20) NOT NULL CHECK (pin_type IN ('safe', 'caution')),
+      category VARCHAR(50) NOT NULL,
+      comment TEXT,
+      was_preview_mode BOOLEAN DEFAULT false,
+      time_of_day VARCHAR(20),
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      is_visible BOOLEAN DEFAULT true
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_segment_pins_location ON segment_pins(lat, lng);
+    CREATE INDEX IF NOT EXISTS idx_segment_pins_user ON segment_pins(user_id);
+    CREATE INDEX IF NOT EXISTS idx_segment_pins_type ON segment_pins(pin_type);
+    CREATE INDEX IF NOT EXISTS idx_segment_pins_visible ON segment_pins(is_visible) WHERE is_visible = true;
   `);
 }
 

@@ -197,8 +197,9 @@ function normalizeCoordinate(coord) {
 /**
  * Function 2: Append crime data to each path
  *
- * For each route, queries crime data within the specified radius
- * of each sample point along the route.
+ * OPTIMIZED: Instead of querying each sample point individually,
+ * calculates a bounding box covering ALL routes and makes a single API call.
+ * Then filters crimes by proximity to each route.
  *
  * @param {Array} routes - Array of route objects from Function 1
  * @returns {Promise<Array>} Routes with crimeData and realtimeCrimeData appended
@@ -207,46 +208,130 @@ async function appendCrimeData(routes) {
   const queryRadius = ROUTE_SAMPLING.queryRadiusMeters;
   const daysBack = 90; // Last 90 days of crime data
 
-  const enrichedRoutes = await Promise.all(routes.map(async (route) => {
-    const allCrimes = new Map(); // Deduplicate by incident ID
-    const allRealtimeCrimes = [];
+  // Calculate bounding box covering ALL routes
+  const allCoordinates = routes.flatMap(route => route.coordinates || []);
+  if (allCoordinates.length === 0) {
+    console.warn('[Algorithm] No coordinates found in routes');
+    return routes.map(route => ({
+      ...route,
+      crimeData: [],
+      realtimeCrimeData: [],
+      crimeStats: calculateCrimeStats([]),
+    }));
+  }
 
-    // Query crime data for each sample point
-    for (const point of route.samplePoints) {
-      try {
-        // Historical crime data
-        const crimes = await getCrimeData(point.lat, point.lng, queryRadius, daysBack);
-        crimes.forEach(crime => {
-          if (crime.id && !allCrimes.has(crime.id)) {
-            allCrimes.set(crime.id, {
-              ...crime,
-              distanceFromRoute: calculateDistance(
-                point.lat, point.lng,
-                parseFloat(crime.latitude), parseFloat(crime.longitude),
-                'meters'
-              ),
-            });
-          }
-        });
+  const bbox = calculateBoundingBox(allCoordinates, queryRadius);
+  console.log(`[Algorithm] Bounding box: N=${bbox.north.toFixed(4)}, S=${bbox.south.toFixed(4)}, E=${bbox.east.toFixed(4)}, W=${bbox.west.toFixed(4)}`);
 
-        // Real-time CAD data
-        const realtimeCrimes = await getRealtimeCadData(point.lat, point.lng, queryRadius);
-        allRealtimeCrimes.push(...realtimeCrimes);
+  // Single API call for all crime data
+  const centerLat = (bbox.north + bbox.south) / 2;
+  const centerLng = (bbox.east + bbox.west) / 2;
+  const bboxRadius = Math.max(
+    calculateDistance(centerLat, centerLng, bbox.north, centerLng, 'meters'),
+    calculateDistance(centerLat, centerLng, centerLat, bbox.east, 'meters')
+  ) + queryRadius;
 
-      } catch (error) {
-        console.warn(`[Algorithm] Crime query failed for point (${point.lat}, ${point.lng}):`, error.message);
+  let allCrimes = [];
+  let allRealtimeCrimes = [];
+
+  try {
+    // Single API call for historical crime data
+    allCrimes = await getCrimeData(centerLat, centerLng, bboxRadius, daysBack);
+    console.log(`[Algorithm] Fetched ${allCrimes.length} crimes in single API call`);
+
+    // Single API call for real-time CAD data
+    allRealtimeCrimes = await getRealtimeCadData(centerLat, centerLng, bboxRadius);
+    console.log(`[Algorithm] Fetched ${allRealtimeCrimes.length} real-time incidents in single API call`);
+  } catch (error) {
+    console.error('[Algorithm] Crime data fetch failed:', error.message);
+  }
+
+  // Filter and assign crimes to each route based on proximity
+  const enrichedRoutes = routes.map(route => {
+    const routeCrimes = new Map(); // Deduplicate by incident ID
+
+    // For each crime, check if it's within queryRadius of any point on this route
+    allCrimes.forEach(crime => {
+      if (!crime.id || !crime.latitude || !crime.longitude) return;
+
+      const crimeLat = parseFloat(crime.latitude);
+      const crimeLng = parseFloat(crime.longitude);
+
+      // Find minimum distance to route
+      let minDistance = Infinity;
+      for (const point of route.samplePoints) {
+        const dist = calculateDistance(point.lat, point.lng, crimeLat, crimeLng, 'meters');
+        if (dist < minDistance) {
+          minDistance = dist;
+        }
+        if (dist <= queryRadius) break; // Early exit if within radius
       }
-    }
+
+      if (minDistance <= queryRadius && !routeCrimes.has(crime.id)) {
+        routeCrimes.set(crime.id, {
+          ...crime,
+          distanceFromRoute: minDistance,
+        });
+      }
+    });
+
+    // Filter real-time crimes for this route
+    const routeRealtimeCrimes = allRealtimeCrimes.filter(incident => {
+      if (!incident.latitude || !incident.longitude) return false;
+
+      const incLat = parseFloat(incident.latitude);
+      const incLng = parseFloat(incident.longitude);
+
+      for (const point of route.samplePoints) {
+        const dist = calculateDistance(point.lat, point.lng, incLat, incLng, 'meters');
+        if (dist <= queryRadius) return true;
+      }
+      return false;
+    });
 
     return {
       ...route,
-      crimeData: Array.from(allCrimes.values()),
-      realtimeCrimeData: deduplicateById(allRealtimeCrimes),
-      crimeStats: calculateCrimeStats(Array.from(allCrimes.values())),
+      crimeData: Array.from(routeCrimes.values()),
+      realtimeCrimeData: deduplicateById(routeRealtimeCrimes),
+      crimeStats: calculateCrimeStats(Array.from(routeCrimes.values())),
     };
-  }));
+  });
 
   return enrichedRoutes;
+}
+
+/**
+ * Calculate bounding box covering all coordinates with buffer
+ * @param {Array} coordinates - Array of {lat, lng} objects
+ * @param {number} bufferMeters - Buffer distance in meters
+ * @returns {Object} { north, south, east, west }
+ */
+function calculateBoundingBox(coordinates, bufferMeters) {
+  let minLat = Infinity, maxLat = -Infinity;
+  let minLng = Infinity, maxLng = -Infinity;
+
+  coordinates.forEach(coord => {
+    const lat = coord.lat || coord.latitude;
+    const lng = coord.lng || coord.longitude;
+    if (lat && lng) {
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+      minLng = Math.min(minLng, lng);
+      maxLng = Math.max(maxLng, lng);
+    }
+  });
+
+  // Add buffer (convert meters to degrees)
+  const latBuffer = bufferMeters / 111000;
+  const avgLat = (minLat + maxLat) / 2;
+  const lngBuffer = bufferMeters / (111000 * Math.cos(avgLat * Math.PI / 180));
+
+  return {
+    north: maxLat + latBuffer,
+    south: minLat - latBuffer,
+    east: maxLng + lngBuffer,
+    west: minLng - lngBuffer,
+  };
 }
 
 /**
@@ -258,14 +343,13 @@ function calculateCrimeStats(crimes) {
     total: crimes.length,
     violent: 0,
     property: 0,
-    recent7Days: 0,
     recent30Days: 0,
     recent90Days: 0,
   };
 
   crimes.forEach(crime => {
-    // Count by type
-    if (isViolentCrime(crime.incident_category)) {
+    // Count by type (use pre-computed flags from crimeService)
+    if (crime.isViolent) {
       stats.violent++;
     } else {
       stats.property++;
@@ -275,21 +359,11 @@ function calculateCrimeStats(crimes) {
     const crimeDate = new Date(crime.incident_datetime);
     const daysDiff = (now - crimeDate) / (1000 * 60 * 60 * 24);
 
-    if (daysDiff <= 7) stats.recent7Days++;
     if (daysDiff <= 30) stats.recent30Days++;
     if (daysDiff <= 90) stats.recent90Days++;
   });
 
   return stats;
-}
-
-/**
- * Check if a crime category is violent
- */
-function isViolentCrime(category) {
-  if (!category) return false;
-  const violentKeywords = ['assault', 'robbery', 'homicide', 'rape', 'kidnapping', 'weapon'];
-  return violentKeywords.some(kw => category.toLowerCase().includes(kw));
 }
 
 /**
@@ -548,17 +622,6 @@ function scorePaths(routes, sunData, preferences = {}) {
  */
 function buildDetailedMetrics(route, sunData, scores) {
   const crimeStats = route.crimeStats || {};
-  const recentCrimes = (route.crimeData || [])
-    .filter(c => {
-      const daysSince = (Date.now() - new Date(c.incident_datetime)) / (1000 * 60 * 60 * 24);
-      return daysSince <= 7;
-    })
-    .slice(0, 5) // Top 5 most recent
-    .map(c => ({
-      type: c.incident_category,
-      date: c.incident_datetime,
-      severity: isViolentCrime(c.incident_category) ? 'violent' : 'property',
-    }));
 
   return {
     crime: {
@@ -566,9 +629,7 @@ function buildDetailedMetrics(route, sunData, scores) {
       totalIncidents: crimeStats.total || 0,
       violentCount: crimeStats.violent || 0,
       propertyCount: crimeStats.property || 0,
-      last7Days: crimeStats.recent7Days || 0,
       last30Days: crimeStats.recent30Days || 0,
-      recentCrimes,
       assessment: getCrimeAssessment(scores.crimeScore),
     },
     footTraffic: {
@@ -684,8 +745,8 @@ function calculateCrimeScoreRelative(crimes, routeDistanceMeters) {
   const routeKm = Math.max(routeDistanceMeters / 1000, 0.5);
   const crimesPerKm = crimes.length / routeKm;
 
-  // Count violent crimes specifically
-  const violentCrimes = crimes.filter(c => isViolentCrime(c.incident_category));
+  // Count violent crimes specifically (use pre-computed flag from crimeService)
+  const violentCrimes = crimes.filter(c => c.isViolent);
   const violentPerKm = violentCrimes.length / routeKm;
 
   // Compare to citywide baseline
@@ -703,10 +764,10 @@ function calculateCrimeScoreRelative(crimes, routeDistanceMeters) {
   let recencyMultiplier = 1.0;
   const recentCrimes = crimes.filter(c => {
     const daysSince = (Date.now() - new Date(c.incident_datetime)) / (1000 * 60 * 60 * 24);
-    return daysSince <= 7;
+    return daysSince <= 30;
   });
   if (recentCrimes.length > 0) {
-    recencyMultiplier = 1.0 + (recentCrimes.length / crimes.length) * 0.5;
+    recencyMultiplier = 1.0 + (recentCrimes.length / crimes.length) * 0.3;
   }
 
   // Convert ratio to score (0-100)

@@ -9,8 +9,78 @@ import { apiConfig, cacheConfig } from '../config/index.js';
 import { query } from '../db/connection.js';
 import { CRIME_CATEGORIES } from '@pinkpath/shared/constants.js';
 
-// In-memory cache for API responses
+// ==============================================
+// LRU CACHE WITH TTL AND MAX SIZE
+// ==============================================
+
+const MAX_CACHE_SIZE = 100; // Maximum number of cached entries
 const cache = new Map();
+
+/**
+ * Set a cache entry with LRU eviction
+ * @param {string} key - Cache key
+ * @param {Object} value - Value to cache (must have 'data' and 'timestamp')
+ */
+function setCacheEntry(key, value) {
+  // If key exists, delete it first (to update position in Map)
+  if (cache.has(key)) {
+    cache.delete(key);
+  }
+
+  // Evict oldest entries if at max size
+  while (cache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = cache.keys().next().value;
+    cache.delete(oldestKey);
+    console.log(`[CrimeService] Cache evicted oldest entry: ${oldestKey}`);
+  }
+
+  cache.set(key, value);
+}
+
+/**
+ * Get a cache entry, returning null if expired
+ * @param {string} key - Cache key
+ * @param {number} ttl - Time to live in milliseconds
+ * @returns {Object|null} Cached data or null if expired/missing
+ */
+function getCacheEntry(key, ttl) {
+  const cached = cache.get(key);
+  if (!cached) return null;
+
+  if (Date.now() - cached.timestamp >= ttl) {
+    cache.delete(key);
+    return null;
+  }
+
+  // Move to end of Map for LRU ordering
+  cache.delete(key);
+  cache.set(key, cached);
+
+  return cached.data;
+}
+
+/**
+ * Periodically clean expired entries (runs every 5 minutes)
+ */
+function cleanExpiredEntries() {
+  const now = Date.now();
+  let cleaned = 0;
+
+  for (const [key, value] of cache.entries()) {
+    const ttl = key.startsWith('cad_') ? cacheConfig.cad : cacheConfig.crime;
+    if (now - value.timestamp >= ttl) {
+      cache.delete(key);
+      cleaned++;
+    }
+  }
+
+  if (cleaned > 0) {
+    console.log(`[CrimeService] Cleaned ${cleaned} expired cache entries`);
+  }
+}
+
+// Run cleanup every 5 minutes
+setInterval(cleanExpiredEntries, 5 * 60 * 1000);
 
 // ==============================================
 // HISTORICAL CRIME DATA
@@ -28,10 +98,10 @@ const cache = new Map();
 export async function getCrimeData(lat, lng, radiusMeters = 800, daysBack = 90) {
   const cacheKey = `crime_${lat.toFixed(4)}_${lng.toFixed(4)}_${radiusMeters}_${daysBack}`;
 
-  // Check cache
-  const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < cacheConfig.crime) {
-    return cached.data;
+  // Check cache with TTL
+  const cachedData = getCacheEntry(cacheKey, cacheConfig.crime);
+  if (cachedData) {
+    return cachedData;
   }
 
   try {
@@ -104,8 +174,8 @@ export async function getCrimeData(lat, lng, radiusMeters = 800, daysBack = 90) 
       isProperty: CRIME_CATEGORIES.isProperty(crime.incident_category || ''),
     }));
 
-    // Cache the result
-    cache.set(cacheKey, {
+    // Cache the result with LRU eviction
+    setCacheEntry(cacheKey, {
       data: enrichedCrimes,
       timestamp: Date.now(),
     });
@@ -162,10 +232,10 @@ export async function getCrimeData(lat, lng, radiusMeters = 800, daysBack = 90) 
 export async function getRealtimeCadData(lat, lng, radiusMeters = 1000) {
   const cacheKey = `cad_${lat.toFixed(4)}_${lng.toFixed(4)}_${radiusMeters}`;
 
-  // Check cache (shorter duration for real-time data)
-  const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < cacheConfig.cad) {
-    return cached.data;
+  // Check cache with TTL (shorter duration for real-time data)
+  const cachedData = getCacheEntry(cacheKey, cacheConfig.cad);
+  if (cachedData) {
+    return cachedData;
   }
 
   try {
@@ -257,8 +327,8 @@ export async function getRealtimeCadData(lat, lng, radiusMeters = 1000) {
         };
       });
 
-    // Cache the result
-    cache.set(cacheKey, {
+    // Cache the result with LRU eviction
+    setCacheEntry(cacheKey, {
       data: enrichedIncidents,
       timestamp: Date.now(),
     });

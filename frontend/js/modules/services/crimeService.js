@@ -67,16 +67,16 @@ export function getCrimeSeverity(category) {
 }
 
 /**
- * Filter crimes to last 7 days and violent/theft categories only
- * Used for displaying recent crime markers on map
+ * Filter crimes to violent/theft categories only (last 30 days)
+ * Used for displaying crime markers on map
  * @param {Array} crimes - Array of crime objects from backend
  * @returns {Array} Filtered violent/theft crimes with isViolent flag
  */
-export function filterRecentViolentCrimes(crimes) {
+export function filterViolentCrimes(crimes) {
     if (!crimes || crimes.length === 0) return [];
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const violentCategories = [
         'Homicide', 'Robbery', 'Assault', 'Sex Offense', 'Human Trafficking', 'Weapon Offense'
@@ -87,7 +87,7 @@ export function filterRecentViolentCrimes(crimes) {
     return crimes
         .filter(crime => {
             const crimeDate = new Date(crime.incident_datetime);
-            return crimeDate >= sevenDaysAgo && targetCategories.includes(crime.incident_category);
+            return crimeDate >= thirtyDaysAgo && targetCategories.includes(crime.incident_category);
         })
         .map(crime => ({
             ...crime,

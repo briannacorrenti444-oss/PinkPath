@@ -107,22 +107,7 @@ function updateDetailedMetrics(metrics) {
         setElementText('crime-total-incidents', crime.totalIncidents);
         setElementText('crime-violent-count', crime.violentCount);
         setElementText('crime-property-count', crime.propertyCount);
-        setElementText('crime-last-7-days', crime.last7Days);
         setElementText('crime-assessment', crime.assessment);
-
-        // Recent crimes list
-        if (crime.recentCrimes && crime.recentCrimes.length > 0) {
-            const recentList = document.getElementById('recent-crimes-list');
-            const recentItems = document.getElementById('recent-crimes-items');
-            if (recentList && recentItems) {
-                recentList.style.display = 'block';
-                recentItems.innerHTML = crime.recentCrimes.map(c => {
-                    const severityClass = c.severity === 'violent' ? 'crime-violent' : 'crime-property';
-                    const date = new Date(c.date).toLocaleDateString();
-                    return `<li><span class="crime-type ${severityClass}">${c.type}</span> <span class="crime-date">${date}</span></li>`;
-                }).join('');
-            }
-        }
     }
 
     // Foot traffic details

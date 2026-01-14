@@ -28,7 +28,7 @@ import {
 } from './modules/utils.js';
 
 // Import crime service (only what we need)
-import { filterRecentViolentCrimes } from './modules/services/crimeService.js';
+import { filterViolentCrimes } from './modules/services/crimeService.js';
 
 // Import search controller (Google Places)
 import { reverseGeocode as googleReverseGeocode } from './modules/controllers/searchController.js';
@@ -77,6 +77,18 @@ import {
     logout,
     getCurrentUser
 } from './modules/controllers/authController.js';
+
+// Import rating controller
+import {
+    loadRatingCategories,
+    getCategoriesForRating,
+    canSubmitRating,
+    setRatingContext,
+    getRatingContext,
+    clearRatingContext,
+    submitRouteRating,
+    submitSegmentPin
+} from './modules/controllers/ratingController.js';
 
 console.log('[PinkPath] All imports loaded successfully');
 
@@ -707,7 +719,7 @@ async function calculateAndDisplayRoute(start, end) {
 
         // Add crime markers
         if (currentRouteData.rawCrimeData && currentRouteData.rawCrimeData.length > 0) {
-            const recentCrimes = filterRecentViolentCrimes(currentRouteData.rawCrimeData);
+            const recentCrimes = filterViolentCrimes(currentRouteData.rawCrimeData);
             if (recentCrimes.length > 0) {
                 crimeMarkersData = addCrimeMarkersToMap(routeMap, recentCrimes, { coordinates: routeCoordinates });
             }
@@ -967,7 +979,7 @@ function selectRoute(newIndex) {
     // Update crime markers
     removeCrimeMarkers(crimeMarkersData);
     if (selectedRoute.rawCrimeData && selectedRoute.rawCrimeData.length > 0) {
-        const recentCrimes = filterRecentViolentCrimes(selectedRoute.rawCrimeData);
+        const recentCrimes = filterViolentCrimes(selectedRoute.rawCrimeData);
         if (recentCrimes.length > 0) {
             crimeMarkersData = addCrimeMarkersToMap(routeMap, recentCrimes, { coordinates: routeCoordinates });
         }
@@ -1159,7 +1171,7 @@ function displayRouteOnNavigationMap() {
 
     // Add crime markers
     if (currentRouteData.rawCrimeData && currentRouteData.rawCrimeData.length > 0) {
-        const recentCrimes = filterRecentViolentCrimes(currentRouteData.rawCrimeData);
+        const recentCrimes = filterViolentCrimes(currentRouteData.rawCrimeData);
         if (recentCrimes.length > 0) {
             navCrimeMarkersData = addCrimeMarkersToMap(navigationMap, recentCrimes, { coordinates: routeCoordinates });
         }
@@ -1483,6 +1495,9 @@ function updateNavigationUI() {
     }
 
     updateNavigationStats();
+
+    // Update preview mode UI elements (rate button visibility)
+    updatePreviewModeUI();
 }
 
 function updateNavigationStats() {
@@ -1522,7 +1537,7 @@ function updateNavigationStatus(text, isActive) {
 }
 
 function handleArrival() {
-    console.log('🎉 Arrived at destination!');
+    console.log('[PinkPath] Arrived at destination!');
 
     if (navigationWatchId) {
         navigator.geolocation.clearWatch(navigationWatchId);
@@ -1541,10 +1556,473 @@ function handleArrival() {
     if (currentEl) currentEl.textContent = 'You have reached your destination';
     if (nextEl) nextEl.textContent = '';
 
+    // Show rating modal after a brief delay
     setTimeout(() => {
-        alert('🎉 You have arrived at your destination!\n\nThank you for using PinkPath.');
+        showRatingModal();
+    }, 1500);
+}
+
+/**
+ * Show the route rating modal
+ * Sets up rating context and displays appropriate view based on auth state
+ */
+function showRatingModal() {
+    console.log('[PinkPath] Showing rating modal...');
+
+    // Set up rating context with current route info
+    const currentRoute = routeOptions[selectedRouteIndex];
+    if (selectedStart && selectedDestination) {
+        setRatingContext({
+            startLat: selectedStart.lat,
+            startLng: selectedStart.lng,
+            endLat: selectedDestination.lat,
+            endLng: selectedDestination.lng,
+            polyline: currentRoute?.polyline || null,
+            wasPreviewMode: isPreviewMode,
+        });
+    }
+
+    // Reset modal state
+    resetRatingModal();
+
+    // Check auth state and show appropriate view
+    const { isLoggedIn } = getAuthState();
+    const authGate = document.getElementById('rating-auth-gate');
+    const ratingForm = document.getElementById('rating-form');
+    const ratingSuccess = document.getElementById('rating-success');
+
+    if (authGate) authGate.style.display = isLoggedIn ? 'none' : 'block';
+    if (ratingForm) ratingForm.style.display = isLoggedIn ? 'block' : 'none';
+    if (ratingSuccess) ratingSuccess.style.display = 'none';
+
+    openModal('route-rating-modal');
+}
+
+/**
+ * Reset rating modal to initial state
+ */
+function resetRatingModal() {
+    // Clear selected rating
+    document.querySelectorAll('.rating-option').forEach(opt => {
+        opt.classList.remove('selected');
+    });
+
+    // Hide reasons section
+    const reasonsSection = document.getElementById('rating-reasons');
+    if (reasonsSection) reasonsSection.style.display = 'none';
+
+    // Clear reason chips
+    const reasonChips = document.getElementById('reason-chips');
+    if (reasonChips) reasonChips.innerHTML = '';
+
+    // Clear comment
+    const commentInput = document.getElementById('rating-comment-input');
+    if (commentInput) commentInput.value = '';
+    updateCommentCharCount();
+
+    // Disable submit button
+    const submitBtn = document.getElementById('submit-rating-btn');
+    if (submitBtn) submitBtn.disabled = true;
+
+    // Reset selected rating state
+    window._selectedRating = null;
+    window._selectedReasons = [];
+}
+
+/**
+ * Handle rating option selection
+ */
+function handleRatingSelection(option) {
+    const rating = option.dataset.rating;
+    console.log('[Rating] Selected:', rating);
+
+    // Update visual selection
+    document.querySelectorAll('.rating-option').forEach(opt => {
+        opt.classList.remove('selected');
+    });
+    option.classList.add('selected');
+
+    // Store selected rating
+    window._selectedRating = rating;
+    window._selectedReasons = [];
+
+    // Show reason chips for this rating
+    showReasonChips(rating);
+
+    // Enable submit button
+    const submitBtn = document.getElementById('submit-rating-btn');
+    if (submitBtn) submitBtn.disabled = false;
+}
+
+/**
+ * Show reason chips based on selected rating
+ */
+function showReasonChips(rating) {
+    const reasonsSection = document.getElementById('rating-reasons');
+    const reasonChips = document.getElementById('reason-chips');
+
+    if (!reasonsSection || !reasonChips) return;
+
+    reasonsSection.style.display = 'block';
+    reasonChips.innerHTML = '';
+
+    const categories = getCategoriesForRating(rating);
+    categories.forEach(cat => {
+        const chip = document.createElement('button');
+        chip.className = 'reason-chip';
+        chip.textContent = cat.label;
+        chip.dataset.code = cat.code;
+        chip.addEventListener('click', () => toggleReasonChip(chip, cat.code));
+        reasonChips.appendChild(chip);
+    });
+}
+
+/**
+ * Toggle a reason chip selection
+ */
+function toggleReasonChip(chip, code) {
+    chip.classList.toggle('selected');
+
+    if (chip.classList.contains('selected')) {
+        if (!window._selectedReasons.includes(code)) {
+            window._selectedReasons.push(code);
+        }
+    } else {
+        window._selectedReasons = window._selectedReasons.filter(c => c !== code);
+    }
+}
+
+/**
+ * Update comment character count
+ */
+function updateCommentCharCount() {
+    const input = document.getElementById('rating-comment-input');
+    const counter = document.getElementById('comment-char-count');
+    if (input && counter) {
+        counter.textContent = input.value.length;
+    }
+}
+
+/**
+ * Handle rating submission
+ */
+async function handleRatingSubmit() {
+    if (!window._selectedRating) {
+        console.log('[Rating] No rating selected');
+        return;
+    }
+
+    const submitBtn = document.getElementById('submit-rating-btn');
+    const commentInput = document.getElementById('rating-comment-input');
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+    }
+
+    const ratingData = {
+        rating: window._selectedRating,
+        reasons: window._selectedReasons || [],
+        comment: commentInput?.value || null,
+    };
+
+    console.log('[Rating] Submitting:', ratingData);
+
+    const result = await submitRouteRating(ratingData);
+
+    if (result.success) {
+        console.log('[Rating] Submitted successfully:', result.ratingId);
+        showRatingSuccess();
+    } else {
+        console.error('[Rating] Submission failed:', result.error);
+        alert('Failed to submit rating: ' + result.error);
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit Rating';
+        }
+    }
+}
+
+/**
+ * Show rating success message
+ */
+function showRatingSuccess() {
+    const ratingForm = document.getElementById('rating-form');
+    const ratingSuccess = document.getElementById('rating-success');
+
+    if (ratingForm) ratingForm.style.display = 'none';
+    if (ratingSuccess) ratingSuccess.style.display = 'block';
+}
+
+/**
+ * Close rating modal and clean up
+ */
+function closeRatingModal() {
+    closeModal('route-rating-modal');
+    clearRatingContext();
+
+    // Return to results screen if we were navigating
+    if (document.getElementById('screen-active-navigation').classList.contains('active')) {
         endNavigation();
-    }, 1000);
+    }
+}
+
+// ========================================
+// SEGMENT PIN PANEL
+// ========================================
+
+// Pin panel state
+let pinPanelMapListener = null;
+let selectedPinLocation = null;
+let selectedPinCategory = null;
+let selectedPinType = null;
+
+/**
+ * Open the segment pin panel
+ */
+function openPinPanel() {
+    console.log('[Pin] Opening pin panel...');
+
+    // Check auth
+    if (!canSubmitRating()) {
+        alert('Please sign in to add safety notes');
+        return;
+    }
+
+    const panel = document.getElementById('segment-pin-panel');
+    if (panel) {
+        panel.style.display = 'block';
+        populatePinChips();
+        resetPinPanel();
+
+        // Enable map click for pin location
+        if (navigationMap) {
+            pinPanelMapListener = navigationMap.addListener('click', handleMapClickForPin);
+        }
+    }
+}
+
+/**
+ * Close the segment pin panel
+ */
+function closePinPanel() {
+    const panel = document.getElementById('segment-pin-panel');
+    if (panel) panel.style.display = 'none';
+
+    // Remove map click listener
+    if (pinPanelMapListener) {
+        google.maps.event.removeListener(pinPanelMapListener);
+        pinPanelMapListener = null;
+    }
+
+    resetPinPanel();
+}
+
+/**
+ * Reset pin panel state
+ */
+function resetPinPanel() {
+    selectedPinLocation = null;
+    selectedPinCategory = null;
+    selectedPinType = null;
+
+    const locationPreview = document.getElementById('pin-location-preview');
+    if (locationPreview) locationPreview.style.display = 'none';
+
+    document.querySelectorAll('.pin-chip').forEach(chip => {
+        chip.classList.remove('selected');
+    });
+
+    const submitBtn = document.getElementById('submit-pin-btn');
+    if (submitBtn) submitBtn.disabled = true;
+}
+
+/**
+ * Populate pin category chips
+ */
+function populatePinChips() {
+    const safeChips = document.getElementById('safe-pin-chips');
+    const cautionChips = document.getElementById('caution-pin-chips');
+
+    if (!safeChips || !cautionChips) return;
+
+    const categories = getCategoriesForRating('neutral'); // Get all categories
+
+    // Clear existing
+    safeChips.innerHTML = '';
+    cautionChips.innerHTML = '';
+
+    // Add safe chips
+    const safeCategories = getCategoriesForRating('safe');
+    safeCategories.forEach(cat => {
+        const chip = document.createElement('button');
+        chip.className = 'pin-chip safe';
+        chip.textContent = cat.label;
+        chip.dataset.code = cat.code;
+        chip.dataset.type = 'safe';
+        chip.addEventListener('click', () => selectPinCategory(chip, cat.code, 'safe'));
+        safeChips.appendChild(chip);
+    });
+
+    // Add caution chips
+    const cautionCategories = getCategoriesForRating('unsafe');
+    cautionCategories.forEach(cat => {
+        const chip = document.createElement('button');
+        chip.className = 'pin-chip caution';
+        chip.textContent = cat.label;
+        chip.dataset.code = cat.code;
+        chip.dataset.type = 'caution';
+        chip.addEventListener('click', () => selectPinCategory(chip, cat.code, 'caution'));
+        cautionChips.appendChild(chip);
+    });
+}
+
+/**
+ * Handle map click for pin placement
+ */
+function handleMapClickForPin(event) {
+    selectedPinLocation = {
+        lat: event.latLng.lat(),
+        lng: event.latLng.lng(),
+    };
+
+    console.log('[Pin] Location selected:', selectedPinLocation);
+
+    const locationPreview = document.getElementById('pin-location-preview');
+    const coordsDisplay = document.getElementById('pin-coords');
+
+    if (locationPreview) locationPreview.style.display = 'flex';
+    if (coordsDisplay) {
+        coordsDisplay.textContent = `${selectedPinLocation.lat.toFixed(5)}, ${selectedPinLocation.lng.toFixed(5)}`;
+    }
+
+    updatePinSubmitButton();
+}
+
+/**
+ * Clear selected pin location
+ */
+function clearPinLocation() {
+    selectedPinLocation = null;
+
+    const locationPreview = document.getElementById('pin-location-preview');
+    if (locationPreview) locationPreview.style.display = 'none';
+
+    updatePinSubmitButton();
+}
+
+/**
+ * Select a pin category
+ */
+function selectPinCategory(chip, code, type) {
+    // Clear other selections
+    document.querySelectorAll('.pin-chip').forEach(c => {
+        c.classList.remove('selected');
+    });
+
+    chip.classList.add('selected');
+    selectedPinCategory = code;
+    selectedPinType = type;
+
+    updatePinSubmitButton();
+}
+
+/**
+ * Update pin submit button state
+ */
+function updatePinSubmitButton() {
+    const submitBtn = document.getElementById('submit-pin-btn');
+    if (submitBtn) {
+        submitBtn.disabled = !(selectedPinLocation && selectedPinCategory);
+    }
+}
+
+/**
+ * Handle pin submission
+ */
+async function handlePinSubmit() {
+    if (!selectedPinLocation || !selectedPinCategory) {
+        console.log('[Pin] Missing location or category');
+        return;
+    }
+
+    const submitBtn = document.getElementById('submit-pin-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Adding...';
+    }
+
+    const pinData = {
+        lat: selectedPinLocation.lat,
+        lng: selectedPinLocation.lng,
+        pinType: selectedPinType,
+        category: selectedPinCategory,
+    };
+
+    console.log('[Pin] Submitting:', pinData);
+
+    const result = await submitSegmentPin(pinData);
+
+    if (result.success) {
+        console.log('[Pin] Added successfully:', result.pinId);
+
+        // Add visual marker to map
+        addPinMarkerToMap(pinData);
+
+        // Reset and show success
+        closePinPanel();
+    } else {
+        console.error('[Pin] Submission failed:', result.error);
+        alert('Failed to add note: ' + result.error);
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add Note';
+    }
+}
+
+/**
+ * Add a visual marker for a submitted pin
+ */
+function addPinMarkerToMap(pinData) {
+    if (!navigationMap) return;
+
+    const color = pinData.pinType === 'safe' ? '#48bb78' : '#ed8936';
+
+    const markerContent = document.createElement('div');
+    markerContent.style.cssText = `
+        width: 24px;
+        height: 24px;
+        background: ${color};
+        border-radius: 50%;
+        border: 3px solid white;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        color: white;
+        font-weight: bold;
+    `;
+    markerContent.innerHTML = pinData.pinType === 'safe' ? '&#10003;' : '!';
+
+    new google.maps.marker.AdvancedMarkerElement({
+        map: navigationMap,
+        position: { lat: pinData.lat, lng: pinData.lng },
+        content: markerContent,
+        title: pinData.category,
+    });
+}
+
+/**
+ * Update preview mode button visibility
+ */
+function updatePreviewModeUI() {
+    const rateBtn = document.getElementById('rate-route-preview-btn');
+    if (rateBtn) {
+        rateBtn.style.display = isPreviewMode ? 'flex' : 'none';
+    }
 }
 
 function endNavigation() {
@@ -1991,6 +2469,50 @@ document.addEventListener('DOMContentLoaded', function() {
     wireButton('crime-modal-close-btn', () => closeModal('crime-details-modal'));
     wireButton('more-info-btn', toggleCrimeDetails);
     wireButton('crime-modal-close-footer-btn', () => closeModal('crime-details-modal'));
+
+    // ========================================
+    // ROUTE RATING MODAL
+    // ========================================
+    console.log('[Init] Setting up rating modal...');
+    wireModalBackdrop('route-rating-modal');
+    wireButton('rating-modal-close-btn', closeRatingModal);
+    wireButton('rating-skip-btn', closeRatingModal);
+    wireButton('rating-done-btn', closeRatingModal);
+    wireButton('rating-sign-in-btn', () => {
+        closeModal('route-rating-modal');
+        goToScreen('screen-auth');
+    });
+
+    // Rating option selection
+    document.querySelectorAll('.rating-option').forEach(option => {
+        option.addEventListener('click', () => handleRatingSelection(option));
+    });
+
+    // Comment character counter
+    const commentInput = document.getElementById('rating-comment-input');
+    if (commentInput) {
+        commentInput.addEventListener('input', updateCommentCharCount);
+    }
+
+    // Submit rating button
+    wireButton('submit-rating-btn', handleRatingSubmit);
+
+    // Load rating categories on startup
+    loadRatingCategories().then(() => {
+        console.log('[Init] Rating categories loaded');
+    });
+
+    // ========================================
+    // SEGMENT PIN PANEL
+    // ========================================
+    console.log('[Init] Setting up segment pin panel...');
+    wireButton('add-safety-note-btn', openPinPanel);
+    wireButton('close-pin-panel-btn', closePinPanel);
+    wireButton('clear-pin-location-btn', clearPinLocation);
+    wireButton('submit-pin-btn', handlePinSubmit);
+
+    // Preview mode rate route button
+    wireButton('rate-route-preview-btn', showRatingModal);
 
     // ========================================
     // INITIALIZATION COMPLETE

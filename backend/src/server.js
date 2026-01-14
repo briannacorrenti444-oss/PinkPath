@@ -21,6 +21,7 @@ import authRoutes from './routes/auth.js';
 import routeRoutes from './routes/routes.js';
 import userRoutes from './routes/users.js';
 import safetyRoutes from './routes/safety.js';
+import ratingsRoutes from './routes/ratings.js';
 
 // Import database
 import { initializeDatabase, closeDatabase } from './db/connection.js';
@@ -130,6 +131,7 @@ server.get('/api', async (request, reply) => {
       routes: '/api/routes/*',
       users: '/api/users/*',
       safety: '/api/safety/*',
+      ratings: '/api/ratings/*',
     },
   };
 });
@@ -145,6 +147,7 @@ await server.register(authRoutes, { prefix: '/api/auth' });
 await server.register(routeRoutes, { prefix: '/api/routes' });
 await server.register(userRoutes, { prefix: '/api/users' });
 await server.register(safetyRoutes, { prefix: '/api/safety' });
+await server.register(ratingsRoutes, { prefix: '/api/ratings' });
 
 // ==============================================
 // ERROR HANDLING
