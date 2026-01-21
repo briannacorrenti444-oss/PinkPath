@@ -14,10 +14,10 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 # Copy package files from backend
-COPY backend/package*.json ./
+COPY backend/package.json ./
 
 # Install production dependencies only
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # ----------------------------------------------
 # Stage 2: Production

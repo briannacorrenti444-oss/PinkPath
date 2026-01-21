@@ -19,9 +19,13 @@ const { Pool } = pg;
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+// Allow explicit SSL disable for Docker/local environments
+const sslEnabled = process.env.DB_SSL !== 'false' && isProduction;
+
 /**
  * PostgreSQL connection pool configuration
  * SECURITY: SSL required in production to encrypt database connections
+ * Set DB_SSL=false to disable SSL (e.g., for Docker environments)
  */
 const poolConfig = {
   connectionString: process.env.DATABASE_URL,
@@ -39,7 +43,8 @@ const poolConfig = {
 
   // SECURITY: SSL configuration for production
   // Render and most cloud providers require SSL connections
-  ssl: isProduction ? {
+  // Set DB_SSL=false for Docker/local PostgreSQL without SSL
+  ssl: sslEnabled ? {
     rejectUnauthorized: false, // Required for Render/Heroku managed certs
   } : false,
 };
