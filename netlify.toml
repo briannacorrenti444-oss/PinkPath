@@ -18,13 +18,11 @@
 # ==============================================
 
 # SPA fallback - serve index.html for all routes (client-side routing)
+# force = false means actual files (JS, CSS, images) are served directly
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-
-  # Don't rewrite actual files (JS, CSS, images, etc.)
-  conditions = {Role = ["admin", "user"]}
   force = false
 
 # ==============================================
@@ -48,7 +46,7 @@
 
     # Content Security Policy (adjust as needed for Google Maps)
     # Note: Google Maps requires specific CSP rules
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://*.googleapis.com https://*.gstatic.com https://*.google.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.railway.app https://maps.googleapis.com https://routes.googleapis.com; frame-src 'self' https://accounts.google.com;"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://*.googleapis.com https://*.gstatic.com https://*.google.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.googleapis.com https://*.render.com; frame-src 'self' https://accounts.google.com;"
 
 # Cache static assets aggressively
 [[headers]]
@@ -77,9 +75,3 @@
 # Preview/branch deploy context
 [context.deploy-preview]
   # Add preview-specific settings here if needed
-
-# ==============================================
-# FUNCTIONS (if needed later)
-# ==============================================
-# [functions]
-#   directory = "netlify/functions"
