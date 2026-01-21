@@ -49,13 +49,13 @@ export function updateSafetyDisplay(getRouteData) {
     const breakdown = routeData.scoreBreakdown;
     if (breakdown && Object.keys(breakdown).length > 0) {
         // Backend provides: crime, lighting, footTraffic, timeOfDay
-        updateBreakdownItem('breakdown-crime', 'Historical Crime', breakdown.crime ?? 50);
+        updateBreakdownItem('breakdown-crime', 'Crime', breakdown.crime ?? 50);
         updateBreakdownItem('breakdown-lighting', 'Street Lighting', breakdown.lighting ?? 50);
         updateBreakdownItem('breakdown-traffic', 'Foot Traffic', breakdown.footTraffic ?? 50);
         updateBreakdownItem('breakdown-time', 'Time of Day', breakdown.timeOfDay ?? 50);
     } else {
         console.log('[safetyController] No breakdown data available, using defaults');
-        updateBreakdownItem('breakdown-crime', 'Historical Crime', 50);
+        updateBreakdownItem('breakdown-crime', 'Crime', 50);
         updateBreakdownItem('breakdown-lighting', 'Street Lighting', 50);
         updateBreakdownItem('breakdown-traffic', 'Foot Traffic', 50);
         updateBreakdownItem('breakdown-time', 'Time of Day', 50);
