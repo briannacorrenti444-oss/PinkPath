@@ -3,16 +3,27 @@
 ## Priority 1: Production Deployment
 
 ### Frontend (Netlify)
-- [ ] Migrate frontend to Netlify for production hosting
+- [x] Migrate frontend to Netlify for production hosting
 - [ ] Configure Netlify environment variables
 - [ ] Set up custom domain (if applicable)
-- [ ] Configure Netlify redirects for SPA routing
+- [x] Configure Netlify redirects for SPA routing
 
-### Backend Hosting
-- [ ] Choose backend hosting provider (Railway, Render, Fly.io, or similar)
+### Backend Hosting (Render)
+- [x] Choose backend hosting provider: **Render**
 - [ ] Deploy backend API to production
 - [ ] Set up production PostgreSQL database (Supabase, Neon, or provider's managed DB)
 - [ ] Configure production environment variables
+- [ ] Set Render to paid plan (>90 days) as needed
+
+### ML Algorithm
+- [ ] Implement linear regression ML algorithm for safety scoring
+- [ ] Requires user feedback data to determine "correct" safety scores
+- [ ] Design feedback collection mechanism
+
+**Note:** Multiple route finding has started - currently showing 8 route options. Need to:
+- Make generated route variations follow actual street paths (not just coordinate offsets)
+- Verify street lighting scores are calculated per-route (currently all routes return +/- 1 of same score)
+- Ensure crime data, foot traffic, and other safety factors are unique per route path
 
 ### Docker
 - [ ] Keep Docker setup for local development/testing
@@ -77,7 +88,7 @@
     - (DONE!) API stuff should all be working, you can ask claude to verify the endpoints and make sure the data it's getting is the right data
     - (DONE!) User DB data is not verified AT ALL. A first pass should be written in, the main thing would be to verify you can make an account and login. You will likely need to implement the account setup steps. Then look at the other DB data as I outlined in Cam's Notes on the technical Doc.
 
- - Redo the algorithm to include a linear regression ML algorithm (more robust, requires user feedback data or whatever "the right answer"   is to determine safety score)
+ - (MOVED TO PRIORITY 1) Redo the algorithm to include a linear regression ML algorithm
 
  - (DONE!) Fix Google API key restrictions (for deployment not needed for testing)
  

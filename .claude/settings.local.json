@@ -50,7 +50,20 @@
       "Bash(npm start)",
       "Bash(timeout:*)",
       "Bash(docker-compose ps:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(grep:*)",
+      "Bash(npm audit:*)",
+      "Bash(git restore:*)",
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker compose:*)",
+      "Bash(start http://localhost:3000)",
+      "Bash(npm run dev:*)",
+      "Bash(taskkill:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MzcsImVtYWlsIjoidGVzdEB0ZXN0LmNvbSIsInN1YnNjcmlwdGlvbiI6ImZyZWUiLCJpYXQiOjE3Njk0MTAzMzEsImV4cCI6MTc3MDAxNTEzMX0.KumVAcluwElQ0Z122K2HNdyCKucLvpNs6pcEceCZO8k\")",
+      "Bash(netstat:*)"
     ]
   }
 }

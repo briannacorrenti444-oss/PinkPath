@@ -20,7 +20,7 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
-      - ./shared:/app/shared:ro
+      - ./shared:/app/node_modules/@pinkpath/shared:ro
     command: npm run dev
     environment:
       NODE_ENV: development

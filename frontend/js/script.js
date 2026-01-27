@@ -75,7 +75,8 @@ import {
     register,
     login,
     logout,
-    getCurrentUser
+    getCurrentUser,
+    authFetch
 } from './modules/controllers/authController.js';
 
 // Import rating controller
@@ -175,6 +176,8 @@ let currentRouteData = {
 // Route comparison (when multiple routes are available)
 let routeOptions = [];                  // Array of route data objects (safest, fastest, balanced)
 let selectedRouteIndex = 0;             // Index of currently selected route in routeOptions
+let hasLoadedMoreRoutes = false;        // Track if "Show More Routes" has been clicked
+let isLoadingMoreRoutes = false;        // Track loading state for additional routes
 
 // Route geometry for navigation
 let routeSteps = [];                    // Array of turn-by-turn instruction objects
@@ -654,6 +657,10 @@ async function calculateAndDisplayRoute(start, end) {
             throw new Error('Invalid response from server');
         }
 
+        // Reset "Show More Routes" state for new calculation
+        hasLoadedMoreRoutes = false;
+        isLoadingMoreRoutes = false;
+
         // Process routes from backend
         routeOptions = processBackendRoutes(data.routes);
 
@@ -712,10 +719,10 @@ async function calculateAndDisplayRoute(start, end) {
             fitBoundsToPoints(routeMap, routeCoordinates);
         }
 
-        // Update UI
+        // Update UI - show single route display initially (not comparison)
         updateRouteDisplay();
         updateSafetyDisplay(() => currentRouteData);
-        updateRouteComparisonUI();
+        showSeeAlternativesButton();
 
         // Add crime markers
         if (currentRouteData.rawCrimeData && currentRouteData.rawCrimeData.length > 0) {
@@ -735,15 +742,33 @@ async function calculateAndDisplayRoute(start, end) {
 
 /**
  * Process routes from backend response into frontend format
- * @param {Object} routes - Routes from backend {safest, fastest, balanced}
+ * Now uses allRoutes array to show all available routes ranked by safety
+ * @param {Object} routes - Routes from backend {safest, fastest, balanced, allRoutes}
  * @returns {Array} Processed route options
  */
 function processBackendRoutes(routes) {
     const routeArray = [];
-    const routeTypes = ['safest', 'fastest', 'balanced'];
 
-    routeTypes.forEach((type, index) => {
-        const route = routes[type];
+    // DIAGNOSTIC: Log what we receive from backend
+    console.log('[processBackendRoutes] DIAGNOSTIC - Received routes object keys:', Object.keys(routes));
+    if (routes.safest) {
+        console.log('[processBackendRoutes] DIAGNOSTIC - Safest route keys:', Object.keys(routes.safest));
+        console.log('[processBackendRoutes] DIAGNOSTIC - Safest route has steps:', !!routes.safest.steps);
+        console.log('[processBackendRoutes] DIAGNOSTIC - Safest route steps length:', routes.safest.steps?.length || 0);
+        console.log('[processBackendRoutes] DIAGNOSTIC - Safest route has instructions:', !!routes.safest.instructions);
+        console.log('[processBackendRoutes] DIAGNOSTIC - Safest route instructions length:', routes.safest.instructions?.length || 0);
+        if (routes.safest.steps && routes.safest.steps.length > 0) {
+            console.log('[processBackendRoutes] DIAGNOSTIC - First step:', JSON.stringify(routes.safest.steps[0]));
+        }
+    }
+
+    // Use allRoutes if available (all routes ranked by safety score)
+    // Otherwise fall back to the 3 named routes
+    const routesToProcess = routes.allRoutes && routes.allRoutes.length > 0
+        ? routes.allRoutes
+        : [routes.safest, routes.fastest, routes.balanced].filter(Boolean);
+
+    routesToProcess.forEach((route, index) => {
         if (!route) return;
 
         // Decode polyline to coordinates
@@ -766,7 +791,8 @@ function processBackendRoutes(routes) {
 
         routeArray.push({
             route: route,
-            type: type,
+            type: route.type || `route-${index + 1}`,
+            rank: route.rank || index + 1,
             index: index,
             coordinates: coordinates,
             distance: distanceMiles,
@@ -792,57 +818,36 @@ function processBackendRoutes(routes) {
 
 /**
  * Draw routes on the map with ombre coloring
+ * Beta: Only draws single selected route (alternatives disabled)
  */
 function drawRoutesOnMap(map, routes, selectedIdx) {
     // Clear existing routes
     removePolylines(ombreRoutePolylines);
     removePolylines(alternativeRoutePolylines);
 
-    // Draw selected route first (bottom layer)
-    routes.forEach((routeOption, idx) => {
-        if (idx === selectedIdx) {
-            if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
-                ombreRoutePolylines = drawOmbreRoute(
-                    map,
-                    routeOption.coordinates,
-                    routeOption.crimeSamples,
-                    0.8,
-                    false
-                );
-            } else {
-                ombreRoutePolylines = drawBasicRoute(
-                    map,
-                    routeOption.coordinates,
-                    0.8,
-                    false,
-                    '#4285f4'
-                );
-            }
+    // Draw selected route only (beta: single route mode)
+    const selectedRoute = routes[selectedIdx];
+    if (selectedRoute) {
+        if (selectedRoute.crimeSamples && selectedRoute.crimeSamples.length > 0) {
+            ombreRoutePolylines = drawOmbreRoute(
+                map,
+                selectedRoute.coordinates,
+                selectedRoute.crimeSamples,
+                0.8,
+                false
+            );
+        } else {
+            ombreRoutePolylines = drawBasicRoute(
+                map,
+                selectedRoute.coordinates,
+                0.8,
+                false,
+                '#4285f4'
+            );
         }
-    });
+    }
 
-    // Draw alternative routes (top layer, dashed)
-    routes.forEach((routeOption, idx) => {
-        if (idx !== selectedIdx) {
-            if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
-                alternativeRoutePolylines = drawOmbreRoute(
-                    map,
-                    routeOption.coordinates,
-                    routeOption.crimeSamples,
-                    0.4,
-                    true
-                );
-            } else {
-                alternativeRoutePolylines = drawBasicRoute(
-                    map,
-                    routeOption.coordinates,
-                    0.4,
-                    true,
-                    '#4285f4'
-                );
-            }
-        }
-    });
+    // Alternative routes drawing disabled for beta
 }
 
 /**
@@ -861,11 +866,171 @@ function updateRouteLoadingState(isLoading) {
 }
 
 // ========================================
+// SEE ALTERNATIVE ROUTES
+// ========================================
+
+/**
+ * Show the "See Alternative Routes" button
+ * Called after initial route is displayed
+ */
+function showSeeAlternativesButton() {
+    const alternativesContainer = document.getElementById('see-alternatives-container');
+    const comparisonContainer = document.getElementById('route-comparison-container');
+
+    if (alternativesContainer) {
+        alternativesContainer.style.display = 'flex';
+
+        // Add click handler for the button
+        const seeAlternativesBtn = document.getElementById('see-alternatives-btn');
+        if (seeAlternativesBtn) {
+            // Remove any existing listener first
+            seeAlternativesBtn.replaceWith(seeAlternativesBtn.cloneNode(true));
+            const newBtn = document.getElementById('see-alternatives-btn');
+            newBtn.addEventListener('click', fetchAlternativeRoutes);
+        }
+    }
+
+    // Hide comparison container initially
+    if (comparisonContainer) {
+        comparisonContainer.style.display = 'none';
+    }
+
+    console.log('[PinkPath] Showing "See Alternative Routes" button');
+}
+
+/**
+ * Fetch alternative routes when user clicks "See Alternative Routes"
+ * Gets 5 waypoint-based routes from the backend
+ */
+async function fetchAlternativeRoutes() {
+    if (isLoadingMoreRoutes || hasLoadedMoreRoutes) {
+        console.log('[PinkPath] Already loading or loaded alternative routes');
+        return;
+    }
+
+    const alternativesContainer = document.getElementById('see-alternatives-container');
+    const seeAlternativesBtn = document.getElementById('see-alternatives-btn');
+
+    if (!seeAlternativesBtn) return;
+
+    // Update button state to loading
+    isLoadingMoreRoutes = true;
+    const originalContent = seeAlternativesBtn.innerHTML;
+    seeAlternativesBtn.innerHTML = `
+        <div class="loading-spinner-small"></div>
+        <span>Finding alternative routes...</span>
+    `;
+    seeAlternativesBtn.disabled = true;
+
+    try {
+        // Get the safest route (first in routeOptions) to use as base
+        const baseRoute = routeOptions[0];
+        if (!baseRoute) {
+            throw new Error('No base route available');
+        }
+
+        console.log('[PinkPath] Fetching 5 alternative waypoint-based routes...');
+
+        // Validate start/destination
+        if (!selectedStart || !selectedDestination) {
+            throw new Error('Start or destination location not available');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/routes/alternatives`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                start: { lat: selectedStart.lat, lng: selectedStart.lng },
+                destination: { lat: selectedDestination.lat, lng: selectedDestination.lng },
+                baseRoute: {
+                    coordinates: baseRoute.coordinates || [],
+                    polyline: baseRoute.route?.polyline || '',
+                    distanceMeters: baseRoute.route?.distanceMeters || baseRoute.distance * 1609.34,
+                    durationSeconds: baseRoute.route?.durationSeconds || baseRoute.duration * 60,
+                },
+                preferences: {}
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Failed to fetch alternative routes');
+        }
+
+        const data = await response.json();
+        console.log('[PinkPath] Alternative routes received:', data);
+
+        if (!data.success || !data.additionalRoutes || data.additionalRoutes.length === 0) {
+            throw new Error('No alternative routes found');
+        }
+
+        // Process the additional routes
+        const additionalRoutes = processAdditionalRoutes(data.additionalRoutes);
+        console.log(`[PinkPath] Processed ${additionalRoutes.length} alternative routes`);
+
+        // Combine original route with alternatives
+        routeOptions = [routeOptions[0], ...additionalRoutes];
+
+        // Sort all routes by safety score
+        routeOptions.sort((a, b) => b.safetyScore - a.safetyScore);
+
+        // Re-assign ranks after sorting
+        routeOptions.forEach((route, index) => {
+            route.rank = index + 1;
+            // Mark the original safest route
+            if (route.type === 'safest' || (!route.isWaypointRoute && index === 0)) {
+                route.type = 'safest';
+            }
+        });
+
+        // Mark as loaded
+        hasLoadedMoreRoutes = true;
+
+        // Hide the "See Alternative Routes" button
+        if (alternativesContainer) {
+            alternativesContainer.style.display = 'none';
+        }
+
+        // Show the comparison UI with all 6 routes
+        updateRouteComparisonUI();
+
+        // Redraw routes on map to show all options
+        drawRoutesOnMap(routeMap, routeOptions, selectedRouteIndex);
+
+        console.log(`[PinkPath] Total routes now: ${routeOptions.length} (showing all in comparison)`);
+
+    } catch (error) {
+        console.error('[PinkPath] Error fetching alternative routes:', error);
+
+        // Show error in button
+        seeAlternativesBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="currentColor" class="btn-icon" style="color: #ef4444;">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+            </svg>
+            <span>Failed - Try Again</span>
+        `;
+        seeAlternativesBtn.disabled = false;
+        isLoadingMoreRoutes = false;
+
+        // Reset after 3 seconds to allow retry
+        setTimeout(() => {
+            seeAlternativesBtn.innerHTML = originalContent;
+        }, 3000);
+        return;
+
+    } finally {
+        isLoadingMoreRoutes = false;
+    }
+}
+
+// ========================================
 // ROUTE COMPARISON UI
 // ========================================
 
 /**
  * Build and display the route comparison cards
+ * Shows all routes ranked by safety score
+ * Called after alternatives are loaded
  */
 function updateRouteComparisonUI() {
     const comparisonContainer = document.getElementById('route-comparison-container');
@@ -881,46 +1046,67 @@ function updateRouteComparisonUI() {
     // Show comparison container
     comparisonContainer.style.display = 'flex';
 
+    // Add header showing total routes
+    const header = document.createElement('div');
+    header.className = 'route-comparison-header';
+    header.innerHTML = `<h3>All Routes (${routeOptions.length}) - Ranked by Safety</h3>`;
+    comparisonContainer.appendChild(header);
+
+    // Create scrollable container for route cards
+    const cardsContainer = document.createElement('div');
+    cardsContainer.className = 'route-cards-scroll';
+    comparisonContainer.appendChild(cardsContainer);
+
     // Create card for each route option
     routeOptions.forEach((routeOption, index) => {
         const isSelected = (index === selectedRouteIndex);
-        const typeLabels = { safest: 'Safest', fastest: 'Fastest', balanced: 'Balanced' };
+        const rank = routeOption.rank || index + 1;
+
+        // Determine display label
+        let displayLabel = `#${rank}`;
+        if (routeOption.type === 'safest') displayLabel += ' (Safest)';
+        else if (routeOption.type === 'fastest') displayLabel += ' (Fastest)';
 
         const card = document.createElement('div');
         card.className = `route-card ${isSelected ? 'selected' : ''}`;
         card.dataset.routeIndex = index;
 
+        // Get color based on safety score
+        const scoreColor = getScoreColor(routeOption.safetyScore);
+
         card.innerHTML = `
             <div class="route-card-header">
-                <h3>${typeLabels[routeOption.type] || 'Route ' + (index + 1)} ${isSelected ? '(Selected)' : ''}</h3>
-                <div class="safety-badge" style="background-color: ${routeOption.safetyColor}20; color: ${routeOption.safetyColor};">
-                    ${routeOption.safetyLabel}
+                <div class="route-rank-badge" style="background-color: ${scoreColor};">
+                    ${rank}
                 </div>
+                <h3>${displayLabel}</h3>
             </div>
             <div class="route-card-body">
-                <div class="route-stat">
-                    <span class="route-stat-label">Distance:</span>
-                    <span class="route-stat-value">${routeOption.distanceText}</span>
+                <div class="route-score-display">
+                    <span class="score-large" style="color: ${scoreColor};">${Math.round(routeOption.safetyScore)}</span>
+                    <span class="score-label">Safety</span>
                 </div>
-                <div class="route-stat">
-                    <span class="route-stat-label">Duration:</span>
-                    <span class="route-stat-value">${routeOption.durationText}</span>
-                </div>
-                <div class="route-stat">
-                    <span class="route-stat-label">Safety Score:</span>
-                    <span class="route-stat-value">${Math.round(routeOption.safetyScore)}/100</span>
-                </div>
-                <div class="route-stat">
-                    <span class="route-stat-label">Crime Count:</span>
-                    <span class="route-stat-value">${routeOption.crimeCount}</span>
+                <div class="route-stats-compact">
+                    <div class="route-stat">
+                        <span class="route-stat-value">${routeOption.distanceText}</span>
+                        <span class="route-stat-label">Distance</span>
+                    </div>
+                    <div class="route-stat">
+                        <span class="route-stat-value">${routeOption.durationText}</span>
+                        <span class="route-stat-label">Duration</span>
+                    </div>
+                    <div class="route-stat">
+                        <span class="route-stat-value">${routeOption.crimeCount}</span>
+                        <span class="route-stat-label">Crimes</span>
+                    </div>
                 </div>
             </div>
             <button class="select-route-btn ${isSelected ? 'selected' : ''}" data-route-index="${index}">
-                ${isSelected ? 'Selected' : 'Select Route'}
+                ${isSelected ? 'Selected' : 'Select'}
             </button>
         `;
 
-        comparisonContainer.appendChild(card);
+        cardsContainer.appendChild(card);
     });
 
     // Add click handlers to select buttons
@@ -931,6 +1117,22 @@ function updateRouteComparisonUI() {
             selectRoute(newIndex);
         });
     });
+
+    // Log route variety analysis
+    console.log('📊 Route Variety Analysis:');
+    routeOptions.forEach((r, i) => {
+        console.log(`  Route ${i + 1}: Safety=${Math.round(r.safetyScore)}, Distance=${r.distanceText}, Duration=${r.durationText}`);
+    });
+}
+
+/**
+ * Get color based on safety score (0-100)
+ */
+function getScoreColor(score) {
+    if (score >= 80) return '#22c55e'; // Green - Excellent
+    if (score >= 60) return '#84cc16'; // Light green - Good
+    if (score >= 40) return '#eab308'; // Yellow - Fair
+    return '#ef4444'; // Red - Caution
 }
 
 /**
@@ -984,6 +1186,64 @@ function selectRoute(newIndex) {
             crimeMarkersData = addCrimeMarkersToMap(routeMap, recentCrimes, { coordinates: routeCoordinates });
         }
     }
+}
+
+/**
+ * Process additional routes from the alternatives endpoint
+ * Similar to processBackendRoutes but for the waypoint-based routes
+ * @param {Array} routes - Array of route objects from /api/routes/alternatives
+ * @returns {Array} Processed route options
+ */
+function processAdditionalRoutes(routes) {
+    const routeArray = [];
+
+    routes.forEach((route, index) => {
+        if (!route) return;
+
+        // Decode polyline to coordinates
+        const coordinates = route.polyline
+            ? decodePolyline(route.polyline)
+            : (route.coordinates || []);
+
+        // Convert distance/duration
+        const distanceMiles = route.distanceMeters ? metersToMiles(route.distanceMeters) : 0;
+        const durationMinutes = route.durationSeconds ? secondsToMinutes(route.durationSeconds) : 0;
+
+        // Safety score from backend is 0-100
+        const safetyScore = route.safetyScore || 50;
+
+        // Extract crime count from stats if available
+        const crimeCount = route.stats?.crimes?.total || route.crimeCount || 0;
+
+        // Extract raw crime data from stats or direct property
+        const rawCrimeData = route.stats?.crimes?.rawData || route.crimes || [];
+
+        routeArray.push({
+            route: route,
+            type: route.type || `waypoint-${index + 1}`,
+            rank: null, // Will be assigned after sorting
+            index: index,
+            coordinates: coordinates,
+            distance: distanceMiles,
+            duration: durationMinutes,
+            distanceText: formatDistance(distanceMiles),
+            durationText: formatDuration(durationMinutes),
+            safetyScore: safetyScore,
+            safetyLabel: route.safetyLabel || getSafetyLabel(safetyScore),
+            safetyColor: getSafetyColor(safetyScore),
+            scoreBreakdown: route.scoreBreakdown || {},
+            detailedMetrics: route.detailedMetrics || null,
+            crimes: route.crimes || [],
+            usingCrimeData: crimeCount > 0,
+            crimeCount: crimeCount,
+            rawCrimeData: rawCrimeData,
+            crimeSamples: route.crimeSamples || [],
+            showNighttimeWarning: route.scoreBreakdown?.timeOfDay < 40,
+            isWaypointRoute: true, // Flag to identify these routes
+        });
+    });
+
+    return routeArray;
 }
 
 // ========================================
@@ -1124,50 +1384,41 @@ function displayRouteOnNavigationMap() {
     }
 
     // Extract steps from route
+    // DIAGNOSTIC: Log currentRoute structure when extracting steps
+    console.log('[displayRouteOnNavigationMap] DIAGNOSTIC - currentRoute keys:', currentRoute ? Object.keys(currentRoute) : 'null');
+    console.log('[displayRouteOnNavigationMap] DIAGNOSTIC - currentRoute.steps:', currentRoute?.steps);
+    console.log('[displayRouteOnNavigationMap] DIAGNOSTIC - currentRoute.instructions:', currentRoute?.instructions);
+
     routeSteps = currentRoute.steps || currentRoute.instructions || [];
+    console.log('[displayRouteOnNavigationMap] DIAGNOSTIC - Extracted routeSteps length:', routeSteps.length);
 
-    // Draw routes
-    routeOptions.forEach((routeOption, idx) => {
-        const isSelected = (idx === selectedRouteIndex);
+    // Clear any existing polylines first
+    removePolylines(navOmbreRoutePolylines);
+    removePolylines(navAlternativeRoutePolylines);
 
-        if (isSelected) {
-            if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
-                navOmbreRoutePolylines = drawOmbreRoute(
-                    navigationMap,
-                    routeOption.coordinates,
-                    routeOption.crimeSamples,
-                    0.8,
-                    false
-                );
-            } else {
-                navOmbreRoutePolylines = drawBasicRoute(
-                    navigationMap,
-                    routeOption.coordinates,
-                    0.8,
-                    false,
-                    '#4285f4'
-                );
-            }
+    // Draw selected route only (beta: single route mode)
+    const selectedRoute = routeOptions[selectedRouteIndex];
+    if (selectedRoute) {
+        if (selectedRoute.crimeSamples && selectedRoute.crimeSamples.length > 0) {
+            navOmbreRoutePolylines = drawOmbreRoute(
+                navigationMap,
+                selectedRoute.coordinates,
+                selectedRoute.crimeSamples,
+                0.8,
+                false
+            );
         } else {
-            if (routeOption.crimeSamples && routeOption.crimeSamples.length > 0) {
-                navAlternativeRoutePolylines = drawOmbreRoute(
-                    navigationMap,
-                    routeOption.coordinates,
-                    routeOption.crimeSamples,
-                    0.4,
-                    true
-                );
-            } else {
-                navAlternativeRoutePolylines = drawBasicRoute(
-                    navigationMap,
-                    routeOption.coordinates,
-                    0.4,
-                    true,
-                    '#4285f4'
-                );
-            }
+            navOmbreRoutePolylines = drawBasicRoute(
+                navigationMap,
+                selectedRoute.coordinates,
+                0.8,
+                false,
+                '#4285f4'
+            );
         }
-    });
+    }
+
+    // Alternative routes drawing disabled for beta
 
     // Add crime markers
     if (currentRouteData.rawCrimeData && currentRouteData.rawCrimeData.length > 0) {
@@ -1184,15 +1435,19 @@ function displayRouteOnNavigationMap() {
 }
 
 function startNavigationAfterMapReady() {
+    console.log(`[startNavigationAfterMapReady] Initial routeSteps.length=${routeSteps.length}`);
+
     if (routeSteps.length === 0) {
         // Create simple steps from coordinates if none provided
         routeSteps = [{
             text: 'Head toward your destination',
             distance: currentRouteData.distance * 1609.34
         }];
+        console.log('[startNavigationAfterMapReady] Created fallback single step');
     }
 
     console.log(`📋 Route has ${routeSteps.length} steps`);
+    console.log(`📋 isPreviewMode=${isPreviewMode}`);
 
     // Start GPS tracking in Live Mode
     if (!isPreviewMode) {
@@ -1299,22 +1554,36 @@ function advanceToNextStep() {
 }
 
 function nextStep() {
-    if (!isPreviewMode) return;
+    console.log(`[nextStep] Called. isPreviewMode=${isPreviewMode}, currentStepIndex=${currentStepIndex}, routeSteps.length=${routeSteps.length}`);
+
+    if (!isPreviewMode) {
+        console.log('[nextStep] Not in preview mode, returning');
+        return;
+    }
 
     if (currentStepIndex < routeSteps.length - 1) {
         currentStepIndex++;
         console.log(`➡️ Next step: ${currentStepIndex + 1}/${routeSteps.length}`);
         updateNavigationUI();
+    } else {
+        console.log('[nextStep] Already at last step');
     }
 }
 
 function previousStep() {
-    if (!isPreviewMode) return;
+    console.log(`[previousStep] Called. isPreviewMode=${isPreviewMode}, currentStepIndex=${currentStepIndex}`);
+
+    if (!isPreviewMode) {
+        console.log('[previousStep] Not in preview mode, returning');
+        return;
+    }
 
     if (currentStepIndex > 0) {
         currentStepIndex--;
         console.log(`⬅️ Previous step: ${currentStepIndex + 1}/${routeSteps.length}`);
         updateNavigationUI();
+    } else {
+        console.log('[previousStep] Already at first step');
     }
 }
 
@@ -2134,6 +2403,307 @@ function clearAuthMessages() {
     }
 }
 
+// ========================================
+// CONTACT MANAGEMENT
+// ========================================
+
+// Contact state
+let contactsList = [];
+let contactToDelete = null;
+
+/**
+ * Fetch user's contacts from the API
+ */
+async function fetchContacts() {
+    const loadingEl = document.getElementById('contacts-loading');
+    const emptyEl = document.getElementById('contacts-empty');
+    const listEl = document.getElementById('contacts-list');
+
+    // Show loading state
+    if (loadingEl) loadingEl.style.display = 'flex';
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    try {
+        const response = await authFetch('/api/users/contacts');
+        const data = await response.json();
+
+        if (response.ok) {
+            contactsList = data.contacts || [];
+            renderContacts();
+        } else {
+            console.error('[Contacts] Failed to fetch:', data.error);
+            showContactsError('Failed to load contacts');
+        }
+    } catch (error) {
+        console.error('[Contacts] Fetch error:', error);
+        showContactsError('Network error. Please try again.');
+    } finally {
+        if (loadingEl) loadingEl.style.display = 'none';
+    }
+}
+
+/**
+ * Render contacts list to the DOM
+ */
+function renderContacts() {
+    const listEl = document.getElementById('contacts-list');
+    const emptyEl = document.getElementById('contacts-empty');
+    const loadingEl = document.getElementById('contacts-loading');
+    const limitNotice = document.getElementById('contacts-limit-notice');
+
+    if (!listEl) return;
+
+    // Hide loading
+    if (loadingEl) loadingEl.style.display = 'none';
+
+    // Clear existing contact cards (but keep loading and empty elements)
+    const existingCards = listEl.querySelectorAll('.contact-card');
+    existingCards.forEach(card => card.remove());
+
+    if (contactsList.length === 0) {
+        // Show empty state
+        if (emptyEl) emptyEl.style.display = 'block';
+        if (limitNotice) limitNotice.style.display = 'none';
+    } else {
+        // Hide empty state
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        // Render contact cards
+        contactsList.forEach(contact => {
+            const card = createContactCard(contact);
+            listEl.appendChild(card);
+        });
+
+        // Show limit notice for free tier (1 contact max)
+        const user = getCurrentUser();
+        if (user && user.subscription_level === 'free' && contactsList.length >= 1) {
+            if (limitNotice) limitNotice.style.display = 'flex';
+        } else {
+            if (limitNotice) limitNotice.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Create a contact card element
+ * @param {object} contact - Contact data
+ * @returns {HTMLElement} Contact card element
+ */
+function createContactCard(contact) {
+    const card = document.createElement('div');
+    card.className = 'contact-card';
+    card.dataset.contactId = contact.id;
+
+    const initial = (contact.name || 'U').charAt(0).toUpperCase();
+
+    card.innerHTML = `
+        <div class="contact-avatar">${initial}</div>
+        <div class="contact-details">
+            <div class="contact-name-row">
+                <span class="contact-name">${escapeHtml(contact.name)}</span>
+                ${contact.is_primary ? '<span class="contact-primary-badge">Primary</span>' : ''}
+            </div>
+            <p class="contact-phone">${escapeHtml(contact.phone_number)}</p>
+            ${contact.relationship ? `<p class="contact-relationship">${escapeHtml(contact.relationship)}</p>` : ''}
+        </div>
+        <div class="contact-actions">
+            <button class="contact-delete-btn" data-contact-id="${contact.id}" data-contact-name="${escapeHtml(contact.name)}" title="Remove contact">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                </svg>
+            </button>
+        </div>
+    `;
+
+    // Wire up delete button
+    const deleteBtn = card.querySelector('.contact-delete-btn');
+    deleteBtn.addEventListener('click', () => {
+        showDeleteConfirmation(contact.id, contact.name);
+    });
+
+    return card;
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+/**
+ * Show error message in contacts section
+ */
+function showContactsError(message) {
+    const listEl = document.getElementById('contacts-list');
+    const emptyEl = document.getElementById('contacts-empty');
+
+    if (emptyEl) {
+        emptyEl.style.display = 'block';
+        const emptyTitle = emptyEl.querySelector('h4');
+        const emptyDesc = emptyEl.querySelector('p');
+        if (emptyTitle) emptyTitle.textContent = 'Error loading contacts';
+        if (emptyDesc) emptyDesc.textContent = message;
+    }
+}
+
+/**
+ * Handle add contact form submission
+ */
+async function handleAddContact(e) {
+    e.preventDefault();
+
+    const nameInput = document.getElementById('contact-name');
+    const phoneInput = document.getElementById('contact-phone');
+    const relationshipInput = document.getElementById('contact-relationship');
+    const isPrimaryInput = document.getElementById('contact-is-primary');
+    const submitBtn = document.getElementById('save-contact-btn');
+    const messageEl = document.getElementById('contact-form-message');
+
+    const name = nameInput.value.trim();
+    const phoneNumber = phoneInput.value.trim();
+    const relationship = relationshipInput.value.trim();
+    const isPrimary = isPrimaryInput.checked;
+
+    // Validation
+    if (!name || !phoneNumber) {
+        showFormMessage(messageEl, 'Please fill in all required fields', 'error');
+        return;
+    }
+
+    // Basic phone validation (allow digits, spaces, dashes, parentheses, plus)
+    const phoneRegex = /^[\d\s\-\(\)\+]+$/;
+    if (!phoneRegex.test(phoneNumber) || phoneNumber.replace(/\D/g, '').length < 10) {
+        showFormMessage(messageEl, 'Please enter a valid phone number', 'error');
+        return;
+    }
+
+    // Show loading state
+    submitBtn.classList.add('btn-loading');
+    submitBtn.disabled = true;
+
+    try {
+        const response = await authFetch('/api/users/contacts', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name,
+                phoneNumber,
+                relationship: relationship || null,
+                isPrimary
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Success - close modal and refresh contacts
+            closeModal('add-contact-modal');
+            resetAddContactForm();
+            await fetchContacts();
+        } else if (response.status === 403 && data.code === 'AUTH_003') {
+            // Contact limit reached
+            showFormMessage(messageEl, data.message || 'Contact limit reached. Upgrade to add more.', 'error');
+        } else {
+            showFormMessage(messageEl, data.error || 'Failed to add contact', 'error');
+        }
+    } catch (error) {
+        console.error('[Contacts] Add error:', error);
+        showFormMessage(messageEl, 'Network error. Please try again.', 'error');
+    } finally {
+        submitBtn.classList.remove('btn-loading');
+        submitBtn.disabled = false;
+    }
+}
+
+/**
+ * Show delete confirmation modal
+ */
+function showDeleteConfirmation(contactId, contactName) {
+    contactToDelete = contactId;
+
+    const nameEl = document.getElementById('delete-contact-name');
+    if (nameEl) nameEl.textContent = contactName;
+
+    openModal('delete-contact-modal');
+}
+
+/**
+ * Handle contact deletion
+ */
+async function handleDeleteContact() {
+    if (!contactToDelete) return;
+
+    const confirmBtn = document.getElementById('confirm-delete-btn');
+    confirmBtn.classList.add('btn-loading');
+    confirmBtn.disabled = true;
+
+    try {
+        const response = await authFetch(`/api/users/contacts/${contactToDelete}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            // Success - close modal and refresh contacts
+            closeModal('delete-contact-modal');
+            contactToDelete = null;
+            await fetchContacts();
+        } else {
+            const data = await response.json();
+            alert(data.error || 'Failed to delete contact');
+        }
+    } catch (error) {
+        console.error('[Contacts] Delete error:', error);
+        alert('Network error. Please try again.');
+    } finally {
+        confirmBtn.classList.remove('btn-loading');
+        confirmBtn.disabled = false;
+    }
+}
+
+/**
+ * Reset add contact form
+ */
+function resetAddContactForm() {
+    const form = document.getElementById('add-contact-form');
+    if (form) form.reset();
+
+    const messageEl = document.getElementById('contact-form-message');
+    if (messageEl) messageEl.style.display = 'none';
+}
+
+/**
+ * Show form message
+ */
+function showFormMessage(el, message, type) {
+    if (!el) return;
+    el.textContent = message;
+    el.className = `form-message ${type}`;
+    el.style.display = 'block';
+}
+
+/**
+ * Update account screen with user data
+ */
+function updateAccountScreen(user) {
+    if (!user) return;
+
+    const avatarEl = document.getElementById('account-avatar');
+    const usernameEl = document.getElementById('account-username');
+    const emailEl = document.getElementById('account-email');
+
+    const displayName = user.username || user.email.split('@')[0];
+    const initial = displayName.charAt(0).toUpperCase();
+
+    if (avatarEl) avatarEl.textContent = initial;
+    if (usernameEl) usernameEl.textContent = displayName;
+    if (emailEl) emailEl.textContent = user.email;
+}
+
 /**
  * Update UI based on auth state
  * @param {boolean} isLoggedIn
@@ -2167,6 +2737,9 @@ function updateAuthUI(isLoggedIn, user) {
                 mobileUsernameEl.textContent = user.username || user.email.split('@')[0];
             }
         }
+
+        // Update account settings screen
+        updateAccountScreen(user);
 
         console.log('[Auth] UI updated for logged in user:', user.email);
     } else {
@@ -2461,6 +3034,50 @@ document.addEventListener('DOMContentLoaded', function() {
     // Logout buttons
     wireButton('nav-logout-btn', handleLogout);
     wireButton('mobile-nav-logout-btn', () => { handleLogout(); closeMobileMenu(); });
+
+    // Account buttons (navigate to account settings)
+    wireButton('nav-account-btn', () => {
+        goToScreen('screen-account-settings');
+        fetchContacts();
+    });
+    wireButton('mobile-nav-account-btn', () => {
+        goToScreen('screen-account-settings');
+        fetchContacts();
+        closeMobileMenu();
+    });
+
+    // ========================================
+    // ACCOUNT SETTINGS SCREEN
+    // ========================================
+    console.log('[Init] Setting up account settings...');
+    wireButton('account-back-btn', () => goToScreen('screen-home'));
+    wireButton('account-logout-btn', handleLogout);
+
+    // Add contact modal
+    wireButton('add-contact-btn', () => {
+        resetAddContactForm();
+        openModal('add-contact-modal');
+    });
+    wireModalBackdrop('add-contact-modal');
+    wireButton('add-contact-modal-close-btn', () => closeModal('add-contact-modal'));
+
+    // Add contact form submission
+    const addContactForm = document.getElementById('add-contact-form');
+    if (addContactForm) {
+        addContactForm.addEventListener('submit', handleAddContact);
+    }
+
+    // Delete contact modal
+    wireModalBackdrop('delete-contact-modal');
+    wireButton('delete-contact-modal-close-btn', () => {
+        closeModal('delete-contact-modal');
+        contactToDelete = null;
+    });
+    wireButton('cancel-delete-btn', () => {
+        closeModal('delete-contact-modal');
+        contactToDelete = null;
+    });
+    wireButton('confirm-delete-btn', handleDeleteContact);
 
     // ========================================
     // CRIME DETAILS MODAL

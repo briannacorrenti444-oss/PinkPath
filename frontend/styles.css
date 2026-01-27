@@ -1537,22 +1537,65 @@ body {
     margin-top: 25px;
 }
 
-/* Route Comparison Cards (Phase 2D) */
+/* ===========================================
+   ALTERNATIVE ROUTES UI - DISABLED FOR BETA
+   Uncomment to re-enable post-launch
+   =========================================== */
+
+/*
 .route-comparison-container {
     display: flex;
     flex-direction: column;
-    gap: 15px;
-    margin-top: 25px;
+    gap: 12px;
+    margin-top: 20px;
     margin-bottom: 20px;
+}*/
+
+/*
+.route-comparison-header {
+    padding: 0 5px;
+}
+
+.route-comparison-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0 0 8px 0;
+}
+
+.route-cards-scroll {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    overflow-x: auto;
+    padding: 8px 4px 12px 4px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+}
+
+.route-cards-scroll::-webkit-scrollbar {
+    height: 6px;
+}
+
+.route-cards-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.route-cards-scroll::-webkit-scrollbar-thumb {
+    background: var(--primary-color);
+    border-radius: 3px;
 }
 
 .route-card {
+    flex: 0 0 160px;
     background: white;
     border: 2px solid #e0e0e0;
     border-radius: var(--radius-md);
-    padding: 20px;
+    padding: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
+    scroll-snap-align: start;
 }
 
 .route-card:hover {
@@ -1568,17 +1611,34 @@ body {
 
 .route-card-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.route-rank-badge {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
 }
 
 .route-card-header h3 {
-    font-size: 18px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--text-color);
     margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
+*/
 
 .safety-badge {
     padding: 6px 12px;
@@ -1587,42 +1647,83 @@ body {
     font-weight: 600;
 }
 
+/*
 .route-card-body {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
 }
 
-.route-stat {
+.route-score-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 4px;
+}
+
+.score-large {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.score-label {
+    font-size: 11px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.route-stats-compact {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
+.route-stats-compact .route-stat {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px;
+}
+
+.route-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
 .route-stat-label {
-    font-size: 13px;
-    color: #666;
+    font-size: 10px;
+    color: #888;
     font-weight: 500;
 }
 
 .route-stat-value {
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--text-color);
 }
 
 .select-route-btn {
     width: 100%;
-    padding: 12px 20px;
+    padding: 8px 12px;
     background: white;
     border: 2px solid var(--primary-color);
     color: var(--primary-color);
-    border-radius: var(--radius-md);
-    font-size: 16px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
+}
+
+.select-route-btn:hover {
+    background: var(--primary-light);
 }
 
 .select-route-btn.selected {
@@ -1630,6 +1731,140 @@ body {
     color: white;
     cursor: default;
 }
+*/
+
+/*
+.show-more-routes-container {
+    width: 100%;
+    padding: 20px 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    border-top: 1px solid var(--border-color);
+    margin-top: 10px;
+}
+*/
+
+.show-more-routes-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 24px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(255, 20, 147, 0.25);
+}
+
+.show-more-routes-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 20, 147, 0.35);
+}
+
+.show-more-routes-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.show-more-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0;
+    text-align: center;
+}
+
+/* Small loading spinner for buttons */
+.loading-spinner-small {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 8px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/*
+.route-card[data-waypoint="true"] .route-card-header::after {
+    content: 'via waypoint';
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: auto;
+    padding: 2px 6px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.see-alternatives-container {
+    width: 100%;
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, rgba(255, 20, 147, 0.05) 0%, rgba(255, 105, 180, 0.08) 100%);
+    border-radius: var(--radius-lg);
+    margin: 20px 0;
+    border: 1px dashed rgba(255, 20, 147, 0.3);
+}
+
+.see-alternatives-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px 28px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(255, 20, 147, 0.3);
+    gap: 10px;
+}
+
+.see-alternatives-btn .btn-icon {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.see-alternatives-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(255, 20, 147, 0.4);
+}
+
+.see-alternatives-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.see-alternatives-btn:disabled {
+    opacity: 0.8;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.alternatives-hint {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0;
+    text-align: center;
+}
+END OF ALTERNATIVE ROUTES STYLES - DISABLED FOR BETA */
 
 /* Nighttime Warning Banner */
 .nighttime-warning-banner {
@@ -2268,7 +2503,8 @@ body {
     justify-content: center;
 }
 
-.modal-content {
+.modal-content,
+.modal-dialog {
     background: var(--white);
     border-radius: var(--radius-lg);
     max-width: 700px;
@@ -3289,5 +3525,451 @@ body {
     .segment-pin-panel {
         bottom: 100px;
         width: calc(100% - 24px);
+    }
+}
+
+/* ============================================
+   ACCOUNT SETTINGS SCREEN
+   ============================================ */
+
+.account-section {
+    padding: 40px 0 60px;
+    min-height: calc(100vh - 80px);
+}
+
+/* Account Profile Card */
+.account-card {
+    margin-bottom: 20px;
+}
+
+.account-card-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.account-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--pink-primary), var(--pink-light));
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 700;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.account-info {
+    flex: 1;
+}
+
+.account-username {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--gray-dark);
+    margin: 0 0 4px 0;
+}
+
+.account-email {
+    font-size: 14px;
+    color: var(--gray-medium);
+    margin: 0;
+}
+
+/* Contacts Card */
+.contacts-card {
+    margin-bottom: 20px;
+}
+
+.contacts-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.contacts-header h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--gray-dark);
+    margin: 0;
+}
+
+.contacts-description {
+    font-size: 14px;
+    color: var(--gray-medium);
+    margin: 0 0 20px 0;
+    line-height: 1.5;
+}
+
+/* Contacts List */
+.contacts-list {
+    min-height: 100px;
+}
+
+.contacts-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--gray-medium);
+}
+
+.loading-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--gray-lighter);
+    border-top-color: var(--pink-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 12px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.contacts-loading p {
+    font-size: 14px;
+    margin: 0;
+}
+
+/* Empty State */
+.contacts-empty {
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.contacts-empty .empty-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 16px;
+    background: var(--gray-lighter);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.contacts-empty .empty-icon svg {
+    width: 32px;
+    height: 32px;
+    color: var(--gray-medium);
+}
+
+.contacts-empty h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--gray-dark);
+    margin: 0 0 8px 0;
+}
+
+.contacts-empty p {
+    font-size: 14px;
+    color: var(--gray-medium);
+    margin: 0;
+}
+
+/* Contact Card */
+.contact-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    background: var(--gray-pale);
+    border-radius: var(--radius-md);
+    margin-bottom: 12px;
+    transition: var(--transition);
+}
+
+.contact-card:hover {
+    background: var(--gray-lighter);
+}
+
+.contact-card:last-child {
+    margin-bottom: 0;
+}
+
+.contact-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--pink-lighter), var(--pink-light));
+    color: var(--pink-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 600;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.contact-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.contact-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 2px;
+}
+
+.contact-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--gray-dark);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.contact-primary-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--pink-primary);
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+.contact-phone {
+    font-size: 13px;
+    color: var(--gray-medium);
+    margin: 0;
+}
+
+.contact-relationship {
+    font-size: 12px;
+    color: var(--gray-light);
+    margin: 4px 0 0 0;
+}
+
+.contact-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.contact-delete-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+    color: var(--gray-medium);
+}
+
+.contact-delete-btn:hover {
+    background: #fef2f2;
+    color: var(--danger);
+}
+
+.contact-delete-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Contacts Limit Notice */
+.contacts-limit-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: var(--radius-sm);
+    margin-top: 16px;
+    font-size: 13px;
+    color: #92400e;
+}
+
+.contacts-limit-notice svg {
+    flex-shrink: 0;
+    color: #f59e0b;
+}
+
+/* Logout Section */
+.logout-section {
+    margin-top: 30px;
+}
+
+/* Add Contact Modal */
+#add-contact-modal .modal-body {
+    padding: 24px;
+}
+
+#add-contact-form .input-wrapper {
+    margin-bottom: 20px;
+}
+
+.checkbox-wrapper {
+    margin: 20px 0;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 15px;
+    color: var(--gray-dark);
+    font-weight: 500;
+}
+
+.checkbox-label input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.checkbox-custom {
+    width: 22px;
+    height: 22px;
+    border: 2px solid var(--gray-light);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+
+.checkbox-label input[type="checkbox"]:checked + .checkbox-custom {
+    background: var(--pink-primary);
+    border-color: var(--pink-primary);
+}
+
+.checkbox-label input[type="checkbox"]:checked + .checkbox-custom::after {
+    content: '';
+    width: 6px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    margin-bottom: 2px;
+}
+
+.checkbox-hint {
+    font-size: 12px;
+    color: var(--gray-medium);
+    margin: 6px 0 0 32px;
+}
+
+.form-message {
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 16px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.form-message.error {
+    background-color: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.form-message.success {
+    background-color: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #bbf7d0;
+}
+
+/* Delete Contact Modal */
+.modal-small {
+    max-width: 400px;
+}
+
+.delete-confirm-text {
+    font-size: 15px;
+    color: var(--gray-dark);
+    margin: 0 0 12px 0;
+    line-height: 1.5;
+}
+
+.delete-confirm-warning {
+    font-size: 13px;
+    color: var(--gray-medium);
+    margin: 0;
+}
+
+.delete-modal-footer {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.btn-danger {
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-danger:hover {
+    background: #b91c1c;
+}
+
+.btn-danger:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Responsive adjustments for account screen */
+@media (max-width: 480px) {
+    .account-avatar {
+        width: 52px;
+        height: 52px;
+        font-size: 20px;
+    }
+
+    .account-username {
+        font-size: 18px;
+    }
+
+    .contacts-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .contacts-header .btn-small {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .contact-card {
+        flex-wrap: wrap;
+    }
+
+    .contact-actions {
+        width: 100%;
+        justify-content: flex-end;
+        margin-top: 8px;
     }
 }

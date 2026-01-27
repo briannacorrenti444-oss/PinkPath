@@ -3,7 +3,7 @@
  * API endpoints for calculating safe walking routes
  */
 
-import { calculateSafeRoutes } from '../services/integration/pathAlgorithm.js';
+import { calculateSafeRoutes, scoreAdditionalRoutes } from '../services/integration/pathAlgorithm.js';
 import { query } from '../db/connection.js';
 import { SF_BOUNDS } from '@pinkpath/shared/constants.js';
 
@@ -139,11 +139,12 @@ export default async function routeRoutes(fastify) {
           safest: routes.safest,
           fastest: routes.fastest,
           balanced: routes.balanced,
+          allRoutes: routes.allRoutes || [], // All routes ranked by safety score
         },
         metadata: {
           timestamp: new Date().toISOString(),
           inServiceArea: true,
-          routesAnalyzed: routes.totalRoutesAnalyzed || 8,
+          routesAnalyzed: routes.allRoutes?.length || routes.totalRoutesAnalyzed || 8,
         },
       });
 
@@ -163,6 +164,123 @@ export default async function routeRoutes(fastify) {
         error: 'Route calculation failed',
         message: 'Unable to calculate routes. Please try again.',
         code: 'ROUTE_002',
+      });
+    }
+  });
+
+  // ==============================================
+  // ALTERNATIVE ROUTES (SHOW MORE)
+  // ==============================================
+
+  /**
+   * POST /api/routes/alternatives
+   * Get additional route alternatives via waypoints
+   *
+   * Called when user clicks "Show More Routes" to fetch 4 additional
+   * real street-following routes through strategic waypoints.
+   */
+  fastify.post('/alternatives', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['start', 'destination', 'baseRoute'],
+        properties: {
+          start: {
+            type: 'object',
+            required: ['lat', 'lng'],
+            properties: {
+              lat: { type: 'number', minimum: -90, maximum: 90 },
+              lng: { type: 'number', minimum: -180, maximum: 180 },
+            },
+          },
+          destination: {
+            type: 'object',
+            required: ['lat', 'lng'],
+            properties: {
+              lat: { type: 'number', minimum: -90, maximum: 90 },
+              lng: { type: 'number', minimum: -180, maximum: 180 },
+            },
+          },
+          baseRoute: {
+            type: 'object',
+            description: 'The safest route from initial calculation, used as base for waypoint generation',
+            properties: {
+              coordinates: { type: 'array' },
+              polyline: { type: 'string' },
+              distanceMeters: { type: 'number' },
+              durationSeconds: { type: 'number' },
+            },
+          },
+          preferences: {
+            type: 'object',
+            properties: {
+              preferWellLit: { type: 'boolean' },
+              preferBusyAreas: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { start, destination, baseRoute, preferences } = request.body;
+
+    try {
+      // Validate locations are in San Francisco
+      if (!SF_BOUNDS.contains(start.lat, start.lng)) {
+        return reply.status(400).send({
+          error: 'Out of service area',
+          message: 'Starting location is outside San Francisco',
+          code: 'ROUTE_001',
+        });
+      }
+
+      if (!SF_BOUNDS.contains(destination.lat, destination.lng)) {
+        return reply.status(400).send({
+          error: 'Out of service area',
+          message: 'Destination is outside San Francisco',
+          code: 'ROUTE_001',
+        });
+      }
+
+      // Get user preferences if authenticated
+      let userPreferences = preferences || {};
+      if (request.user) {
+        try {
+          const prefsResult = await query(
+            'SELECT * FROM safety_preferences WHERE user_id = $1',
+            [request.user.id]
+          );
+          if (prefsResult.rows.length > 0) {
+            userPreferences = {
+              ...prefsResult.rows[0],
+              ...preferences,
+            };
+          }
+        } catch (e) {
+          fastify.log.warn('Failed to load user preferences:', e);
+        }
+      }
+
+      // Generate and score additional waypoint-based routes
+      const result = await scoreAdditionalRoutes(start, destination, baseRoute, userPreferences);
+
+      return reply.send({
+        success: true,
+        additionalRoutes: result.additionalRoutes,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          routesGenerated: result.totalGenerated,
+          routesReturned: result.additionalRoutes.length,
+        },
+      });
+
+    } catch (error) {
+      fastify.log.error('Alternative routes error:', error);
+
+      return reply.status(500).send({
+        error: 'Failed to generate alternative routes',
+        message: 'Unable to calculate additional routes. Please try again.',
+        code: 'ROUTE_003',
       });
     }
   });

@@ -62,6 +62,12 @@
                 <!-- User menu (shown when logged in) -->
                 <div class="user-menu" id="nav-user-menu" style="display: none;">
                     <span class="user-name">User</span>
+                    <button class="btn-small btn-primary-outline" id="nav-account-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="margin-right: 4px;">
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                        </svg>
+                        Account
+                    </button>
                     <button class="btn-small btn-secondary-outline" id="nav-logout-btn">Log Out</button>
                 </div>
             </nav>
@@ -84,6 +90,12 @@
         <!-- Mobile user menu (shown when logged in) -->
         <div class="mobile-user-menu" id="mobile-nav-user-menu" style="display: none;">
             <span class="user-name">User</span>
+            <button class="btn-small btn-primary-outline" id="mobile-nav-account-btn">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="margin-right: 4px;">
+                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
+                Account
+            </button>
             <button class="btn-small btn-secondary-outline" id="mobile-nav-logout-btn">Log Out</button>
         </div>
     </div>
@@ -455,10 +467,7 @@
                         </div>
                     </div>
 
-                    <!-- Route Comparison Cards (Phase 2D) -->
-                    <div id="route-comparison-container" class="route-comparison-container" style="display: none;">
-                        <!-- Route cards will be dynamically inserted here -->
-                    </div>
+                    <!-- Alternative routes UI removed for beta - re-enable post-launch -->
 
                     <!-- Action Buttons -->
                     <div class="action-buttons">
@@ -751,6 +760,180 @@
                 </div>
             </div>
         </section>
+    </div>
+
+    <!-- SCREEN 6: ACCOUNT SETTINGS -->
+    <div class="screen" id="screen-account-settings">
+        <section class="account-section">
+            <div class="container-small">
+                <!-- Back button -->
+                <button class="back-button" id="account-back-btn">
+                    ← Back
+                </button>
+
+                <div class="section-header">
+                    <h1 class="page-title">Account Settings</h1>
+                    <p class="page-subtitle">Manage your profile and emergency contacts</p>
+                </div>
+
+                <!-- Profile Section -->
+                <div class="card account-card">
+                    <div class="account-card-header">
+                        <div class="account-avatar" id="account-avatar">U</div>
+                        <div class="account-info">
+                            <h2 class="account-username" id="account-username">User</h2>
+                            <p class="account-email" id="account-email">user@example.com</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trusted Contacts Section -->
+                <div class="card contacts-card">
+                    <div class="contacts-header">
+                        <h3>Trusted Contacts</h3>
+                        <button class="btn-small btn-primary" id="add-contact-btn">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="margin-right: 6px;">
+                                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                            </svg>
+                            Add Contact
+                        </button>
+                    </div>
+
+                    <p class="contacts-description">
+                        Your emergency contacts will be notified when you trigger an SOS alert.
+                    </p>
+
+                    <!-- Contact List -->
+                    <div class="contacts-list" id="contacts-list">
+                        <!-- Loading state -->
+                        <div class="contacts-loading" id="contacts-loading">
+                            <div class="loading-spinner"></div>
+                            <p>Loading contacts...</p>
+                        </div>
+
+                        <!-- Empty state (shown when no contacts) -->
+                        <div class="contacts-empty" id="contacts-empty" style="display: none;">
+                            <div class="empty-icon">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                                </svg>
+                            </div>
+                            <h4>No emergency contacts yet</h4>
+                            <p>Add a trusted contact to receive your SOS alerts</p>
+                        </div>
+
+                        <!-- Contact items will be rendered here -->
+                    </div>
+
+                    <!-- Subscription limit notice -->
+                    <div class="contacts-limit-notice" id="contacts-limit-notice" style="display: none;">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                        </svg>
+                        <span>Free plan allows 1 emergency contact. Upgrade for more.</span>
+                    </div>
+                </div>
+
+                <!-- Logout Section -->
+                <div class="logout-section">
+                    <button class="btn-large btn-secondary" id="account-logout-btn">
+                        Log Out
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Add Contact Modal -->
+    <div class="modal" id="add-contact-modal">
+        <div class="modal-dialog modal-medium">
+            <div class="modal-header">
+                <h2>Add Trusted Contact</h2>
+                <button class="icon-button" id="add-contact-modal-close-btn">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="add-contact-form">
+                    <div class="input-wrapper">
+                        <label class="input-label" for="contact-name">
+                            <span class="label-icon pink">
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                                </svg>
+                            </span>
+                            Name *
+                        </label>
+                        <input type="text" id="contact-name" class="input-field" placeholder="Contact's name" required maxlength="100">
+                    </div>
+
+                    <div class="input-wrapper">
+                        <label class="input-label" for="contact-phone">
+                            <span class="label-icon pink">
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                                    <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                                </svg>
+                            </span>
+                            Phone Number *
+                        </label>
+                        <input type="tel" id="contact-phone" class="input-field" placeholder="(555) 123-4567" required minlength="10" maxlength="20">
+                    </div>
+
+                    <div class="input-wrapper">
+                        <label class="input-label" for="contact-relationship">
+                            <span class="label-icon pink">
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                                </svg>
+                            </span>
+                            Relationship (optional)
+                        </label>
+                        <input type="text" id="contact-relationship" class="input-field" placeholder="e.g., Parent, Partner, Friend" maxlength="50">
+                    </div>
+
+                    <div class="checkbox-wrapper">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="contact-is-primary">
+                            <span class="checkbox-custom"></span>
+                            Set as primary contact
+                        </label>
+                        <p class="checkbox-hint">Primary contact is notified first during emergencies</p>
+                    </div>
+
+                    <div class="form-message" id="contact-form-message" style="display: none;"></div>
+
+                    <button type="submit" class="btn-large btn-primary" id="save-contact-btn">
+                        Save Contact
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Contact Confirmation Modal -->
+    <div class="modal" id="delete-contact-modal">
+        <div class="modal-dialog modal-small">
+            <div class="modal-header">
+                <h2>Remove Contact?</h2>
+                <button class="icon-button" id="delete-contact-modal-close-btn">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="delete-confirm-text">
+                    Are you sure you want to remove <strong id="delete-contact-name">this contact</strong> from your trusted contacts?
+                </p>
+                <p class="delete-confirm-warning">They will no longer receive your emergency alerts.</p>
+            </div>
+            <div class="modal-footer delete-modal-footer">
+                <button class="btn-secondary" id="cancel-delete-btn">Cancel</button>
+                <button class="btn-danger" id="confirm-delete-btn">Remove</button>
+            </div>
+        </div>
     </div>
 
     <!-- FEATURES MODAL (Optional Onboarding) -->

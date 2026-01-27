@@ -12,7 +12,7 @@
  * Function 6: selectPaths() - Select Safest, Fastest, and Happy Medium
  */
 
-import { getGoogleRoutes } from '../googleRoutesService.js';
+import { getGoogleRoutes, getRoutesWithWaypoints } from '../googleRoutesService.js';
 import { getCrimeData, getRealtimeCadData } from '../crimeService.js';
 import { getStreetlightComplaints } from '../lightingService.js';
 import { getSunsetData } from '../sunsetService.js';
@@ -77,15 +77,100 @@ export async function calculateSafeRoutes(start, destination, preferences = {}) 
   const scoredRoutes = scorePaths(routesWithAllData, sunData, preferences);
   console.log('[Algorithm] All routes scored');
 
-  // Function 6: Select the 3 paths to display
+  // Function 6: Select paths to display (now returns all routes)
   const selectedRoutes = selectPaths(scoredRoutes);
-  console.log('[Algorithm] Final routes selected');
+  console.log(`[Algorithm] All ${selectedRoutes.allRoutes?.length || 0} routes scored and ranked`);
 
   return {
     safest: selectedRoutes.safest,
     fastest: selectedRoutes.fastest,
     balanced: selectedRoutes.balanced,
+    allRoutes: selectedRoutes.allRoutes, // All routes ranked by safety score
     totalRoutesAnalyzed: routes.length,
+  };
+}
+
+// ==============================================
+// SCORE ADDITIONAL ROUTES (FOR "SHOW MORE ROUTES")
+// ==============================================
+
+/**
+ * Score additional waypoint-based routes
+ * Called when user clicks "Show More Routes" to get 4 more real street-following routes
+ *
+ * @param {Object} start - Starting location { lat, lng }
+ * @param {Object} destination - Destination { lat, lng }
+ * @param {Object} baseRoute - The safest route from initial calculation (used as base for waypoints)
+ * @param {Object} preferences - User safety preferences (optional)
+ * @returns {Promise<Object>} { additionalRoutes: Array, totalGenerated: number }
+ */
+export async function scoreAdditionalRoutes(start, destination, baseRoute, preferences = {}) {
+  console.log('[Algorithm] Generating additional waypoint-based routes...');
+
+  // Convert baseRoute to the format expected by getRoutesWithWaypoints
+  const baseRouteFormatted = {
+    polyline: {
+      coordinates: baseRoute.coordinates || [],
+      encodedPolyline: baseRoute.polyline || '',
+    },
+    distanceMeters: baseRoute.distanceMeters,
+    durationSeconds: baseRoute.durationSeconds,
+  };
+
+  // Get 5 additional routes via waypoints (real street-following routes)
+  const waypointRoutes = await getRoutesWithWaypoints(start, destination, baseRouteFormatted, 5);
+  console.log(`[Algorithm] Retrieved ${waypointRoutes.length} waypoint-based routes`);
+
+  if (waypointRoutes.length === 0) {
+    return { additionalRoutes: [], totalGenerated: 0 };
+  }
+
+  // Normalize routes to our internal format
+  const normalizedRoutes = waypointRoutes.map((route, index) => ({
+    id: `waypoint_route_${index}`,
+    index,
+    coordinates: route.polyline?.coordinates || [],
+    distanceMeters: route.distanceMeters || 0,
+    durationSeconds: route.durationSeconds || 0,
+    polylineEncoded: route.polyline?.encodedPolyline || '',
+    legs: route.legs || [],
+    samplePoints: sampleRoutePoints(route.polyline?.coordinates || []),
+    crimeData: [],
+    realtimeCrimeData: [],
+    lightingData: [],
+    footTrafficData: [],
+    isWaypointRoute: true,
+    waypoint: route.waypoint,
+  }));
+
+  // Get sunset/sunrise data (needed for scoring)
+  const sunData = await getSunsetSunriseData(start.lat, start.lng);
+
+  // Append crime data to each route
+  const routesWithCrime = await appendCrimeData(normalizedRoutes);
+  console.log(`[Algorithm] Crime data appended to ${routesWithCrime.length} additional routes`);
+
+  // Append lighting and foot traffic data
+  const routesWithAllData = await appendLightingAndTraffic(routesWithCrime, sunData);
+  console.log('[Algorithm] Lighting and traffic data appended to additional routes');
+
+  // Score each route
+  const scoredRoutes = scorePaths(routesWithAllData, sunData, preferences);
+  console.log('[Algorithm] Additional routes scored');
+
+  // Sort by safety score (descending)
+  const sortedRoutes = [...scoredRoutes].sort((a, b) => b.safetyScore - a.safetyScore);
+
+  // Format for response
+  const additionalRoutes = sortedRoutes.map((route, index) => {
+    return formatRouteForResponse(route, `waypoint-${index + 1}`, null);
+  });
+
+  console.log(`[Algorithm] Returning ${additionalRoutes.length} scored additional routes`);
+
+  return {
+    additionalRoutes,
+    totalGenerated: waypointRoutes.length,
   };
 }
 
@@ -107,6 +192,17 @@ async function getGoogleRoutePaths(start, destination) {
       computeAlternativeRoutes: true,
       routeCount: PATH_SELECTION.routesToRequest,
     });
+
+    // DIAGNOSTIC: Log what we receive from googleRoutesService
+    console.log('[Algorithm] DIAGNOSTIC - Routes received from Google service:', routes.length);
+    if (routes.length > 0) {
+      console.log('[Algorithm] DIAGNOSTIC - First route has legs:', !!routes[0].legs);
+      console.log('[Algorithm] DIAGNOSTIC - First route legs length:', routes[0].legs?.length || 0);
+      if (routes[0].legs && routes[0].legs.length > 0) {
+        console.log('[Algorithm] DIAGNOSTIC - First leg has steps:', !!routes[0].legs[0].steps);
+        console.log('[Algorithm] DIAGNOSTIC - First leg steps length:', routes[0].legs[0].steps?.length || 0);
+      }
+    }
 
     // Normalize route format
     return routes.map((route, index) => ({
@@ -983,10 +1079,11 @@ function getSafetyLabel(score) {
 // ==============================================
 
 /**
- * Function 6: Select the 3 paths to display
+ * Function 6: Select paths to display
+ * Returns ALL routes ranked by safety score for comparison
  *
  * @param {Array} scoredRoutes - Routes with safety scores
- * @returns {Object} { safest, fastest, balanced }
+ * @returns {Object} { allRoutes, safest, fastest, balanced }
  */
 function selectPaths(scoredRoutes) {
   if (scoredRoutes.length === 0) {
@@ -1008,7 +1105,17 @@ function selectPaths(scoredRoutes) {
   // Happy Medium = balance between safety and speed
   const balanced = selectBalancedRoute(scoredRoutes, safest, fastest);
 
-  return { safest, fastest, balanced };
+  // Return ALL routes ranked by safety score
+  const allRoutes = sortedBySafety.map((route, index) => {
+    // Determine special labels
+    let routeType = `route-${index + 1}`;
+    if (route.id === sortedBySafety[0].id) routeType = 'safest';
+    else if (route.id === sortedBySpeed[0].id) routeType = 'fastest';
+
+    return formatRouteForResponse(route, routeType, index + 1);
+  });
+
+  return { allRoutes, safest, fastest, balanced };
 }
 
 /**
@@ -1076,11 +1183,29 @@ function selectBalancedRoute(routes, safest, fastest) {
 /**
  * Format route for API response
  * Includes detailedMetrics for "Show More" expansion
+ * @param {Object} route - The route object
+ * @param {string} type - Route type (safest, fastest, balanced, route-N)
+ * @param {number} rank - Safety rank (1 = safest)
  */
-function formatRouteForResponse(route, type) {
+function formatRouteForResponse(route, type, rank = null) {
+  // DIAGNOSTIC: Log what we're about to extract
+  console.log(`[formatRouteForResponse] DIAGNOSTIC - Route ${route.id} type=${type}`);
+  console.log(`[formatRouteForResponse] DIAGNOSTIC - Route has legs:`, !!route.legs);
+  console.log(`[formatRouteForResponse] DIAGNOSTIC - Legs length:`, route.legs?.length || 0);
+
+  // Extract navigation steps from legs
+  const steps = extractNavigationSteps(route.legs || []);
+
+  // DIAGNOSTIC: Log extracted steps
+  console.log(`[formatRouteForResponse] DIAGNOSTIC - Extracted ${steps.length} steps`);
+  if (steps.length > 0) {
+    console.log(`[formatRouteForResponse] DIAGNOSTIC - First step:`, JSON.stringify(steps[0]));
+  }
+
   return {
     id: route.id,
     type,
+    rank,
     safetyScore: route.safetyScore,
     safetyLabel: route.safetyLabel,
     distanceMeters: route.distanceMeters,
@@ -1089,6 +1214,9 @@ function formatRouteForResponse(route, type) {
     durationText: formatDuration(route.durationSeconds),
     polyline: route.polylineEncoded,
     coordinates: route.coordinates,
+    // Navigation steps for turn-by-turn
+    steps: steps,
+    instructions: steps, // Alias for backward compatibility
     scoreBreakdown: route.scoreBreakdown,
     stats: {
       crimes: {
@@ -1109,6 +1237,51 @@ function formatRouteForResponse(route, type) {
     // Detailed metrics for "Show More" expansion
     detailedMetrics: route.detailedMetrics || null,
   };
+}
+
+/**
+ * Extract navigation steps from Google Routes API legs
+ * @param {Array} legs - Route legs from Google API
+ * @returns {Array} Formatted navigation steps
+ */
+function extractNavigationSteps(legs) {
+  const steps = [];
+
+  console.log(`[extractNavigationSteps] Received ${legs.length} legs`);
+  if (legs.length > 0) {
+    console.log(`[extractNavigationSteps] First leg keys:`, Object.keys(legs[0]));
+    console.log(`[extractNavigationSteps] First leg steps:`, legs[0].steps ? `${legs[0].steps.length} steps` : 'no steps');
+  }
+
+  for (const leg of legs) {
+    if (!leg.steps) continue;
+
+    for (const step of leg.steps) {
+      steps.push({
+        text: step.navigationInstruction?.instructions || 'Continue',
+        instruction: step.navigationInstruction?.instructions || 'Continue',
+        maneuver: step.navigationInstruction?.maneuver || null,
+        distance: step.distanceMeters || 0,
+        duration: parseDurationString(step.staticDuration) || 0,
+        latLng: step.startLocation?.latLng ? {
+          lat: step.startLocation.latLng.latitude,
+          lng: step.startLocation.latLng.longitude,
+        } : null,
+      });
+    }
+  }
+
+  return steps;
+}
+
+/**
+ * Parse duration string like "120s" to seconds
+ */
+function parseDurationString(duration) {
+  if (!duration) return 0;
+  if (typeof duration === 'number') return duration;
+  const match = String(duration).match(/(\d+)s/);
+  return match ? parseInt(match[1], 10) : 0;
 }
 
 /**
