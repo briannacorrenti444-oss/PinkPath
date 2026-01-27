@@ -15,6 +15,16 @@
 - [ ] Configure production environment variables
 - [ ] Set Render to paid plan (>90 days) as needed
 
+### Render Web Service Setup (Deferred)
+- [ ] Fix Render deployment for production (after local Docker testing complete)
+  - [ ] Decide: Native Node vs Docker on Render
+  - [ ] If Native Node: Rename `backend/Dockerfile` → `backend/Dockerfile.local`
+  - [ ] If Native Node: Solve `shared/` package import (copy to backend or use relative path)
+  - [ ] Create `render.yaml` production config separate from local Docker
+  - [ ] Test health endpoint: `/health`
+  - [ ] Test one full route calculation end-to-end
+  - [ ] Set up UptimeRobot or similar for monitoring
+
 ### ML Algorithm
 - [ ] Implement linear regression ML algorithm for safety scoring
 - [ ] Requires user feedback data to determine "correct" safety scores

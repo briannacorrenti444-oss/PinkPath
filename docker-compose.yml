@@ -67,7 +67,8 @@ services:
     volumes:
       # Mount source for hot-reload in development
       - ./backend/src:/app/src:ro
-      - ./shared:/app/shared:ro
+      # Mount shared package to node_modules location (where imports expect it)
+      - ./shared:/app/node_modules/@pinkpath/shared:ro
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
       interval: 30s

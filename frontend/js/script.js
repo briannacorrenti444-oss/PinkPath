@@ -2896,6 +2896,9 @@ document.addEventListener('DOMContentLoaded', function() {
         goToScreen('screen-plan-route');
     });
 
+    // View Tutorial button (in footer)
+    wireButton('view-tutorial-btn', showTutorialAgain);
+
     // ========================================
     // AUTH SCREEN
     // ========================================
@@ -3132,6 +3135,12 @@ document.addEventListener('DOMContentLoaded', function() {
     wireButton('rate-route-preview-btn', showRatingModal);
 
     // ========================================
+    // WELCOME TUTORIAL
+    // ========================================
+    console.log('[Init] Setting up welcome tutorial...');
+    initWelcomeTutorial();
+
+    // ========================================
     // INITIALIZATION COMPLETE
     // ========================================
     console.log('[Init] PinkPath ready (Google Maps version)!');
@@ -3141,6 +3150,216 @@ document.addEventListener('DOMContentLoaded', function() {
         alert('PinkPath failed to initialize: ' + error.message);
     }
 });
+
+// ========================================
+// WELCOME TUTORIAL
+// ========================================
+
+const TUTORIAL_STORAGE_KEY = 'pinkpath_tutorial_completed';
+const TUTORIAL_TOTAL_STEPS = 5;
+let tutorialCurrentStep = 1;
+
+/**
+ * Initialize the welcome tutorial system
+ * Checks for reset param, localStorage, and shows tutorial if first visit
+ */
+function initWelcomeTutorial() {
+    // Check for reset parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('reset_tutorial') === 'true') {
+        localStorage.removeItem(TUTORIAL_STORAGE_KEY);
+        console.log('[Tutorial] Reset via URL parameter');
+        // Clean up URL without reload
+        const cleanUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
+    }
+
+    // Check if tutorial has been completed
+    const tutorialCompleted = localStorage.getItem(TUTORIAL_STORAGE_KEY);
+
+    if (!tutorialCompleted) {
+        console.log('[Tutorial] First-time user detected, showing tutorial');
+        // Slight delay to ensure page is fully rendered
+        setTimeout(() => showWelcomeTutorial(), 500);
+    } else {
+        console.log('[Tutorial] Returning user, skipping tutorial');
+    }
+
+    // Wire tutorial buttons
+    wireButton('tutorial-skip-btn', skipTutorial);
+    wireButton('tutorial-prev-btn', tutorialPrevStep);
+    wireButton('tutorial-next-btn', tutorialNextStep);
+    wireButton('tutorial-signin-btn', tutorialGoToSignIn);
+
+    // Wire progress dots for direct navigation
+    const progressDots = document.querySelectorAll('.progress-dot');
+    progressDots.forEach(dot => {
+        dot.addEventListener('click', () => {
+            const step = parseInt(dot.dataset.step);
+            if (step && step <= tutorialCurrentStep) {
+                goToTutorialStep(step);
+            }
+        });
+    });
+
+    // Wire backdrop click to close (optional - user must complete or skip)
+    wireModalBackdrop('welcome-tutorial-modal');
+}
+
+/**
+ * Show the welcome tutorial modal
+ */
+function showWelcomeTutorial() {
+    tutorialCurrentStep = 1;
+    updateTutorialUI();
+    openModal('welcome-tutorial-modal');
+    console.log('[Tutorial] Tutorial opened');
+}
+
+/**
+ * Go to a specific tutorial step
+ */
+function goToTutorialStep(step) {
+    if (step < 1 || step > TUTORIAL_TOTAL_STEPS) return;
+
+    tutorialCurrentStep = step;
+    updateTutorialUI();
+}
+
+/**
+ * Go to the previous tutorial step
+ */
+function tutorialPrevStep() {
+    if (tutorialCurrentStep > 1) {
+        tutorialCurrentStep--;
+        updateTutorialUI();
+    }
+}
+
+/**
+ * Go to the next tutorial step or complete the tutorial
+ */
+function tutorialNextStep() {
+    if (tutorialCurrentStep < TUTORIAL_TOTAL_STEPS) {
+        tutorialCurrentStep++;
+        updateTutorialUI();
+    } else {
+        completeTutorial();
+    }
+}
+
+/**
+ * Update the tutorial UI based on current step
+ */
+function updateTutorialUI() {
+    // Update step indicator text
+    const stepIndicator = document.getElementById('tutorial-current-step');
+    if (stepIndicator) {
+        stepIndicator.textContent = tutorialCurrentStep;
+    }
+
+    // Update progress dots
+    const progressDots = document.querySelectorAll('.progress-dot');
+    progressDots.forEach(dot => {
+        const dotStep = parseInt(dot.dataset.step);
+        dot.classList.remove('active', 'completed');
+
+        if (dotStep === tutorialCurrentStep) {
+            dot.classList.add('active');
+        } else if (dotStep < tutorialCurrentStep) {
+            dot.classList.add('completed');
+        }
+    });
+
+    // Show/hide tutorial steps
+    const tutorialSteps = document.querySelectorAll('.tutorial-step');
+    tutorialSteps.forEach(step => {
+        const stepNum = parseInt(step.dataset.step);
+        step.classList.remove('active');
+        if (stepNum === tutorialCurrentStep) {
+            step.classList.add('active');
+        }
+    });
+
+    // Update Previous button visibility
+    const prevBtn = document.getElementById('tutorial-prev-btn');
+    if (prevBtn) {
+        prevBtn.style.visibility = tutorialCurrentStep > 1 ? 'visible' : 'hidden';
+    }
+
+    // Update Next button text
+    const nextBtn = document.getElementById('tutorial-next-btn');
+    if (nextBtn) {
+        if (tutorialCurrentStep === TUTORIAL_TOTAL_STEPS) {
+            nextBtn.textContent = 'Get Started';
+        } else {
+            nextBtn.textContent = 'Next';
+        }
+    }
+
+    console.log(`[Tutorial] Step ${tutorialCurrentStep} of ${TUTORIAL_TOTAL_STEPS}`);
+}
+
+/**
+ * Skip the tutorial (marks as completed)
+ */
+function skipTutorial() {
+    markTutorialComplete();
+    closeModal('welcome-tutorial-modal');
+    console.log('[Tutorial] Skipped by user');
+}
+
+/**
+ * Complete the tutorial
+ */
+function completeTutorial() {
+    markTutorialComplete();
+    closeModal('welcome-tutorial-modal');
+
+    // Navigate to plan route screen
+    goToScreen('screen-plan-route');
+    console.log('[Tutorial] Completed, navigating to plan route');
+}
+
+/**
+ * Go to sign-in screen from tutorial
+ */
+function tutorialGoToSignIn() {
+    markTutorialComplete();
+    closeModal('welcome-tutorial-modal');
+    goToScreen('screen-auth');
+    console.log('[Tutorial] Navigating to sign in');
+}
+
+/**
+ * Mark the tutorial as completed in localStorage
+ */
+function markTutorialComplete() {
+    localStorage.setItem(TUTORIAL_STORAGE_KEY, new Date().toISOString());
+}
+
+/**
+ * Reset the tutorial (for testing)
+ * Can be called from browser console: resetTutorial()
+ */
+function resetTutorial() {
+    localStorage.removeItem(TUTORIAL_STORAGE_KEY);
+    console.log('[Tutorial] Reset. Refresh the page to see the tutorial again.');
+    console.log('[Tutorial] Or add ?reset_tutorial=true to the URL');
+}
+
+/**
+ * Show tutorial again (for "View Tutorial" link)
+ */
+function showTutorialAgain() {
+    tutorialCurrentStep = 1;
+    updateTutorialUI();
+    openModal('welcome-tutorial-modal');
+}
+
+// Expose reset function globally for testing
+window.resetTutorial = resetTutorial;
+window.showTutorialAgain = showTutorialAgain;
 
 // ========================================
 // UTILITY FUNCTIONS
