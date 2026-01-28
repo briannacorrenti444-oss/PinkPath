@@ -15,8 +15,16 @@ const USER_KEY = 'pinkpath_user';
 
 /**
  * Initialize auth state from localStorage
+ * Also checks for OAuth callback parameters in URL
  */
 export function initAuth() {
+    // Check for OAuth callback first
+    const oauthResult = handleOAuthCallback();
+    if (oauthResult.handled) {
+        return { user: currentUser, token: authToken, oauthResult };
+    }
+
+    // Restore from localStorage
     const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
 
@@ -32,6 +40,96 @@ export function initAuth() {
     }
 
     return { user: currentUser, token: authToken };
+}
+
+/**
+ * Handle OAuth callback - check URL for token or error
+ * @returns {{handled: boolean, success?: boolean, error?: string}}
+ */
+function handleOAuthCallback() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const error = urlParams.get('error');
+
+    // Not an OAuth callback
+    if (!token && !error) {
+        return { handled: false };
+    }
+
+    // Clean up URL (remove token/error from address bar)
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+
+    // Handle error
+    if (error) {
+        console.error('[authController] OAuth error:', error);
+        return {
+            handled: true,
+            success: false,
+            error: getOAuthErrorMessage(error)
+        };
+    }
+
+    // Handle success - store token and fetch user info
+    if (token) {
+        authToken = token;
+        localStorage.setItem(TOKEN_KEY, token);
+        console.log('[authController] OAuth token received, fetching user info...');
+
+        // Fetch user info async (will update UI when complete)
+        fetchAndStoreUser();
+
+        return { handled: true, success: true };
+    }
+
+    return { handled: false };
+}
+
+/**
+ * Fetch user info from token and store it
+ */
+async function fetchAndStoreUser() {
+    try {
+        const response = await authFetch('/api/auth/me');
+        if (response.ok) {
+            const data = await response.json();
+            currentUser = data.user;
+            localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+            console.log('[authController] OAuth login successful:', currentUser.email);
+
+            // Dispatch event so UI can update
+            window.dispatchEvent(new CustomEvent('auth-login', {
+                detail: { user: currentUser }
+            }));
+        } else {
+            console.error('[authController] Failed to fetch user info');
+            clearAuth();
+        }
+    } catch (error) {
+        console.error('[authController] Error fetching user:', error);
+        clearAuth();
+    }
+}
+
+/**
+ * Get user-friendly error message for OAuth errors
+ */
+function getOAuthErrorMessage(error) {
+    const errorMessages = {
+        'access_denied': 'You cancelled the sign-in process',
+        'invalid_state': 'Security check failed. Please try again.',
+        'oauth_failed': 'Google sign-in failed. Please try again.',
+        'server_error': 'Server error. Please try again later.',
+    };
+    return errorMessages[error] || 'Sign-in failed. Please try again.';
+}
+
+/**
+ * Initiate Google OAuth flow
+ */
+export function startGoogleSignIn() {
+    // Redirect to backend OAuth endpoint
+    window.location.href = `${API_BASE_URL}/api/auth/google`;
 }
 
 /**

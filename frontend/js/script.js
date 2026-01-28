@@ -76,7 +76,8 @@ import {
     login,
     logout,
     getCurrentUser,
-    authFetch
+    authFetch,
+    startGoogleSignIn
 } from './modules/controllers/authController.js';
 
 // Import rating controller
@@ -2904,18 +2905,45 @@ document.addEventListener('DOMContentLoaded', function() {
     // ========================================
     console.log('[Init] Setting up auth...');
 
-    // Initialize auth state from localStorage
+    // Initialize auth state from localStorage (also handles OAuth callback)
     const authState = initAuth();
-    if (authState.user) {
+
+    // Handle OAuth callback result
+    if (authState.oauthResult) {
+        if (authState.oauthResult.success) {
+            // OAuth successful - will update UI when user info is fetched
+            console.log('[Init] OAuth login in progress...');
+            goToScreen('screen-home');
+        } else if (authState.oauthResult.error) {
+            // OAuth failed - show error on auth screen
+            goToScreen('screen-auth');
+            setTimeout(() => {
+                showAuthMessage(authState.oauthResult.error, 'error');
+            }, 100);
+        }
+    } else if (authState.user) {
         console.log('[Init] User already logged in:', authState.user.email);
         updateAuthUI(true, authState.user);
     }
+
+    // Listen for auth-login events (from OAuth callback)
+    window.addEventListener('auth-login', (event) => {
+        console.log('[Auth] OAuth login complete:', event.detail.user.email);
+        updateAuthUI(true, event.detail.user);
+        goToScreen('screen-home');
+    });
 
     // Listen for auth expiration events
     window.addEventListener('auth-expired', () => {
         console.log('[Auth] Token expired, logging out');
         updateAuthUI(false, null);
         goToScreen('screen-auth');
+    });
+
+    // Google Sign-In button
+    wireButton('google-signin-btn', () => {
+        console.log('[Auth] Starting Google Sign-In...');
+        startGoogleSignIn();
     });
 
     // Auth tab switching
@@ -2944,7 +2972,6 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
 
             const email = document.getElementById('signup-email').value.trim();
-            const username = document.getElementById('signup-username').value.trim();
             const password = document.getElementById('signup-password').value;
             const confirmPassword = document.getElementById('signup-confirm-password').value;
 
@@ -2966,14 +2993,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Show loading state
             const submitBtn = signupForm.querySelector('button[type="submit"]');
-            submitBtn.classList.add('btn-loading');
+            submitBtn.classList.add('loading');
             submitBtn.disabled = true;
 
             // Call register API
-            const result = await register(email, password, username || null);
+            const result = await register(email, password, null);
 
             // Hide loading state
-            submitBtn.classList.remove('btn-loading');
+            submitBtn.classList.remove('loading');
             submitBtn.disabled = false;
 
             if (result.success) {
@@ -3007,14 +3034,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Show loading state
             const submitBtn = signinForm.querySelector('button[type="submit"]');
-            submitBtn.classList.add('btn-loading');
+            submitBtn.classList.add('loading');
             submitBtn.disabled = true;
 
             // Call login API
             const result = await login(email, password);
 
             // Hide loading state
-            submitBtn.classList.remove('btn-loading');
+            submitBtn.classList.remove('loading');
             submitBtn.disabled = false;
 
             if (result.success) {
