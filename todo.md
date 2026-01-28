@@ -59,6 +59,30 @@
 - [x] Use `.env` files locally (already in .gitignore)
 - [ ] Configure secrets in hosting provider dashboards
 
+## Priority 2: Google Sign-In (Frontend)
+
+### Current State
+- [x] Backend OAuth endpoints implemented (`/api/auth/google`, `/api/auth/google/callback`)
+- [x] State token validation for CSRF protection
+- [x] User creation/linking with Google accounts
+- [x] JWT token generation on successful OAuth
+
+### Frontend Implementation Needed
+- [ ] Add "Sign in with Google" button to auth screen (official Google branding)
+- [ ] Create callback handler for `/auth/callback` route
+  - Extract token from URL `?token=xxx`
+  - Store in localStorage
+  - Redirect to home/plan-route screen
+  - Handle error cases `?error=xxx`
+- [ ] Style Google button per Google brand guidelines
+
+### Google Cloud Console Setup
+- [ ] Verify OAuth 2.0 credentials exist in Google Cloud Console
+- [ ] Add authorized redirect URIs:
+  - Local: `http://localhost:3001/api/auth/google/callback`
+  - Production: `https://pinkpath-backend.onrender.com/api/auth/google/callback`
+- [ ] Verify `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in .env
+
 ## Priority 4: Missing Features / Improvements
 
 ### UI/Branding
