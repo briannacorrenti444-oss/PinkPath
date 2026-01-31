@@ -14,7 +14,7 @@ services:
     plan: free      # free tier for beta testing
 
     # Build configuration (monorepo - build from root)
-    buildCommand: npm ci --omit=dev --workspace=backend
+    buildCommand: npm ci --omit=dev
     startCommand: node backend/src/server.js
 
     # Health check
