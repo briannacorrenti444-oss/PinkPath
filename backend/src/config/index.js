@@ -16,6 +16,7 @@ export const serverConfig = {
   env: process.env.NODE_ENV || 'development',
   isDev: process.env.NODE_ENV !== 'production',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+  backendUrl: process.env.BACKEND_URL || 'http://localhost:3001',
 };
 
 // ==============================================
@@ -43,7 +44,7 @@ export const authConfig = {
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackUrl: `${serverConfig.isDev ? 'http://localhost:3001' : ''}/api/auth/google/callback`,
+    callbackUrl: `${serverConfig.backendUrl}/api/auth/google/callback`,
   },
 
   bcryptRounds: 12,

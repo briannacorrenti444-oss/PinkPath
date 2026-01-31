@@ -28,6 +28,8 @@ services:
         value: 10000  # Render uses port 10000 by default
       - key: FRONTEND_URL
         sync: false   # Set manually after Netlify deploy
+      - key: BACKEND_URL
+        value: https://pinkpath-backend.onrender.com
       - key: JWT_SECRET
         generateValue: true  # Render auto-generates secure value
       - key: SESSION_SECRET
