@@ -86,6 +86,17 @@ export const apiConfig = {
 };
 
 // ==============================================
+// TWILIO CONFIGURATION
+// ==============================================
+
+export const twilioConfig = {
+  accountSid: process.env.TWILIO_ACCOUNT_SID,
+  authToken: process.env.TWILIO_AUTH_TOKEN,
+  phoneNumber: process.env.TWILIO_PHONE_NUMBER,
+  enabled: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
+};
+
+// ==============================================
 // RATE LIMITING CONFIGURATION
 // ==============================================
 
@@ -160,6 +171,7 @@ export default {
   db: dbConfig,
   auth: authConfig,
   api: apiConfig,
+  twilio: twilioConfig,
   rateLimit: rateLimitConfig,
   cache: cacheConfig,
 };

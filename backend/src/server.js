@@ -27,9 +27,16 @@ import routeRoutes from './routes/routes.js';
 import userRoutes from './routes/users.js';
 import safetyRoutes from './routes/safety.js';
 import ratingsRoutes from './routes/ratings.js';
+import tripRoutes from './routes/trips.js';
+import feedbackRoutes from './routes/feedback.js';
 
 // Import database
 import { initializeDatabase, closeDatabase } from './db/connection.js';
+
+// Import services
+// BETA: Delay monitoring disabled - requires Twilio for automatic notifications
+// Re-enable when Twilio A2P registration is complete
+// import { startDelayMonitoring, stopDelayMonitoring } from './services/arrivalService.js';
 
 // ==============================================
 // ENVIRONMENT VALIDATION
@@ -253,6 +260,8 @@ server.get('/api', async (request, reply) => {
       users: '/api/users/*',
       safety: '/api/safety/*',
       ratings: '/api/ratings/*',
+      trips: '/api/trips/*',
+      feedback: '/api/feedback/*',
     },
   };
 });
@@ -269,6 +278,8 @@ await server.register(routeRoutes, { prefix: '/api/routes' });
 await server.register(userRoutes, { prefix: '/api/users' });
 await server.register(safetyRoutes, { prefix: '/api/safety' });
 await server.register(ratingsRoutes, { prefix: '/api/ratings' });
+await server.register(tripRoutes, { prefix: '/api/trips' });
+await server.register(feedbackRoutes, { prefix: '/api/feedback' });
 
 // ==============================================
 // ERROR HANDLING
@@ -334,9 +345,11 @@ server.setNotFoundHandler(function (request, reply) {
 async function start() {
   try {
     // Initialize database connection (optional in dev mode)
+    let dbConnected = false;
     try {
       await initializeDatabase();
       server.log.info('Database connected successfully');
+      dbConnected = true;
     } catch (dbError) {
       if (isDev) {
         server.log.warn('Database not available - running without DB features');
@@ -345,6 +358,14 @@ async function start() {
         throw dbError; // In production, database is required
       }
     }
+
+    // Start background services if database is connected
+    // BETA: Delay monitoring disabled - requires Twilio for automatic notifications
+    // Re-enable when Twilio A2P registration is complete
+    // if (dbConnected) {
+    //   startDelayMonitoring();
+    //   server.log.info('Trip delay monitoring started');
+    // }
 
     // Start listening
     const port = parseInt(process.env.PORT || '3001', 10);
@@ -373,6 +394,10 @@ async function shutdown() {
   server.log.info('Shutting down server...');
 
   try {
+    // Stop background services
+    // BETA: Delay monitoring disabled
+    // stopDelayMonitoring();
+
     await server.close();
     await closeDatabase();
     server.log.info('Server shutdown complete');

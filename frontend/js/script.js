@@ -92,7 +92,43 @@ import {
     submitSegmentPin
 } from './modules/controllers/ratingController.js';
 
+// Import trip controller
+import {
+    initTripSharing,
+    startTrip,
+    updateTripLocation,
+    endTrip,
+    sendCheckIn,
+    triggerSOS,
+    getActiveTrip,
+    isTripSharingEnabled,
+    loadTripSharingSettings,
+    saveTripSharingSettings
+} from './modules/controllers/tripController.js';
+
 console.log('[PinkPath] All imports loaded successfully');
+
+// ========================================
+// UTILITY FUNCTIONS
+// ========================================
+
+/**
+ * Generate or retrieve a session ID for anonymous users
+ * Used for feature vote tracking without requiring login
+ * @returns {string} Session ID
+ */
+function generateSessionId() {
+    const storageKey = 'pinkpath_session_id';
+    let sessionId = localStorage.getItem(storageKey);
+
+    if (!sessionId) {
+        // Generate a random session ID
+        sessionId = 'sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem(storageKey, sessionId);
+    }
+
+    return sessionId;
+}
 
 // ========================================
 // API CONFIGURATION
@@ -228,9 +264,16 @@ function goToScreen(screenId) {
         // Close mobile menu if open
         closeMobileMenu();
 
-        // Initialize map when showing route results
+        // Initialize map and trip sharing when showing route results
         if (screenId === 'screen-route-results') {
             setTimeout(initializeRouteMap, 100);
+            // Initialize trip sharing toggle
+            initTripSharing();
+        }
+
+        // Load trip sharing settings when showing account settings
+        if (screenId === 'screen-account-settings') {
+            loadTripSharingSettings();
         }
     } else {
         console.error(`Screen not found: ${screenId}`);
@@ -1280,6 +1323,37 @@ function updateRouteDisplay() {
 }
 
 // ========================================
+// GEOLOCATION HELPERS
+// ========================================
+
+/**
+ * Get current position as a Promise
+ * Wraps navigator.geolocation.getCurrentPosition for async/await use
+ * @param {Object} options - Geolocation options
+ * @returns {Promise<GeolocationPosition>}
+ */
+function getCurrentPosition(options = {}) {
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('Geolocation is not supported by this browser'));
+            return;
+        }
+
+        const defaultOptions = {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 60000
+        };
+
+        navigator.geolocation.getCurrentPosition(
+            resolve,
+            reject,
+            { ...defaultOptions, ...options }
+        );
+    });
+}
+
+// ========================================
 // TURN-BY-TURN NAVIGATION
 // ========================================
 
@@ -1337,6 +1411,21 @@ async function startNavigation() {
     isPreviewMode = !atStartPoint;
 
     console.log(`📋 Mode: ${isPreviewMode ? 'PREVIEW' : 'LIVE'}`);
+
+    // Start trip with sharing if enabled (only in live mode)
+    if (!isPreviewMode && isTripSharingEnabled()) {
+        const durationMinutes = currentRoute.duration
+            ? Math.ceil(currentRoute.duration / 60)
+            : 15;
+
+        await startTrip({
+            origin: selectedStart,
+            destination: selectedDestination,
+            originName: document.getElementById('start-input')?.value || 'Starting point',
+            destinationName: document.getElementById('destination-input')?.value || 'Destination',
+            durationMinutes: durationMinutes,
+        });
+    }
 
     // Set navigation state
     destinationLocation = selectedDestination;
@@ -1693,6 +1782,17 @@ function updateNavigationMap() {
 
 function updateNavigationUI() {
     if (!isNavigating) return;
+
+    // Update trip sharing UI
+    const tripSharingBanner = document.getElementById('trip-sharing-banner');
+    const tripActionButtons = document.getElementById('trip-action-buttons');
+    const activeTrip = getActiveTrip();
+
+    if (tripSharingBanner && tripActionButtons) {
+        const showTripUI = activeTrip && !isPreviewMode;
+        tripSharingBanner.style.display = showTripUI ? 'flex' : 'none';
+        tripActionButtons.style.display = showTripUI ? 'flex' : 'none';
+    }
 
     // Update banner
     const statusText = document.getElementById('nav-status-text');
@@ -2303,6 +2403,14 @@ function endNavigation() {
         navigationWatchId = null;
     }
 
+    // End trip if active (ask user if they arrived or cancelled)
+    const activeTrip = getActiveTrip();
+    if (activeTrip) {
+        // For now, assume cancelled when user manually ends
+        // In Phase 6, we'll add a prompt asking if they arrived
+        endTrip('cancelled');
+    }
+
     isNavigating = false;
     isPreviewMode = false;
     currentStepIndex = 0;
@@ -2324,25 +2432,318 @@ function endNavigation() {
 }
 
 // ========================================
+// TRIP SHARING ACTIONS
+// ========================================
+
+let checkInCooldown = false;
+
+async function handleCheckIn() {
+    if (checkInCooldown) {
+        alert('Please wait before sending another check-in.');
+        return;
+    }
+
+    const success = await sendCheckIn();
+    if (success) {
+        // Set 10-minute cooldown
+        checkInCooldown = true;
+        const checkInBtn = document.getElementById('check-in-btn');
+        if (checkInBtn) {
+            checkInBtn.disabled = true;
+            checkInBtn.textContent = 'Sent!';
+        }
+
+        setTimeout(() => {
+            checkInCooldown = false;
+            if (checkInBtn) {
+                checkInBtn.disabled = false;
+                checkInBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                    </svg>
+                    I'm OK
+                `;
+            }
+        }, 10 * 60 * 1000); // 10 minutes
+    }
+}
+
+async function handleArrived() {
+    // End trip as arrived
+    await endTrip('arrived');
+
+    // End navigation
+    endNavigation();
+}
+
+/**
+ * Handle share trip button from route preview screen
+ * Works without sign-in - generates message from current route data
+ */
+function handleShareTripFromPreview() {
+    if (!currentRouteData || !currentRouteData.safetyScore) {
+        alert('No route to share. Please find a route first.');
+        return;
+    }
+
+    // Get location names from input fields (same IDs used in startNavigation)
+    const destination = document.getElementById('main-destination')?.value ||
+        document.getElementById('destination-input')?.value ||
+        'my destination';
+    const origin = document.getElementById('main-start-location')?.value ||
+        document.getElementById('start-input')?.value ||
+        'my current location';
+    const duration = currentRouteData.durationText || currentRouteData.duration || 'unknown';
+    const safetyScore = currentRouteData.safetyScore || '--';
+
+    // Calculate estimated arrival time
+    let eta = 'soon';
+    if (currentRouteData.durationValue) {
+        const arrivalTime = new Date(Date.now() + currentRouteData.durationValue * 1000);
+        eta = arrivalTime.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+    }
+
+    // Build the share message
+    const message = `I'm about to walk from ${origin} to ${destination}.
+
+ETA: ${eta}
+Walk time: ${duration}
+Safety Score: ${safetyScore}/100
+
+I'll let you know when I arrive safely!
+
+Sent via PinkPath - the safety navigation app`;
+
+    // Show the manual SMS modal
+    showShareTripModal(message);
+}
+
+/**
+ * Show share trip modal with message preview
+ * @param {string} message - The message to share
+ */
+function showShareTripModal(message) {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay manual-sms-modal';
+    overlay.innerHTML = `
+        <div class="modal-content">
+            <h3 class="modal-title">Share your trip</h3>
+            <p class="modal-description">
+                Let someone know where you're going. We'll open your Messages app with this message ready to send.
+            </p>
+            <div class="sms-preview">
+                <div class="sms-preview-label">Message preview:</div>
+                <div class="sms-preview-text">${message.replace(/\n/g, '<br>')}</div>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-secondary modal-skip-btn">Cancel</button>
+                <button class="btn-primary modal-send-btn">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+                    </svg>
+                    Open Messages
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Add event listeners
+    const skipBtn = overlay.querySelector('.modal-skip-btn');
+    const sendBtn = overlay.querySelector('.modal-send-btn');
+
+    skipBtn.addEventListener('click', () => {
+        overlay.remove();
+    });
+
+    sendBtn.addEventListener('click', () => {
+        // Open SMS app with message
+        const encodedMessage = encodeURIComponent(message);
+        window.location.href = `sms:?body=${encodedMessage}`;
+        overlay.remove();
+    });
+
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            overlay.remove();
+        }
+    });
+}
+
+// ========================================
+// FEATURE UPVOTE MODAL
+// ========================================
+
+/**
+ * Show feature upvote modal for Coming Soon features
+ * @param {string} featureKey - Unique key for the feature (e.g., 'alternative_routes')
+ * @param {string} featureTitle - Display title for the feature
+ * @param {string} featureDescription - Description of what the feature will do
+ */
+function showFeatureUpvoteModal(featureKey, featureTitle, featureDescription) {
+    // Get current votes from localStorage
+    const votesKey = 'pinkpath_feature_votes';
+    let votes = JSON.parse(localStorage.getItem(votesKey) || '{}');
+    const hasVoted = votes[featureKey]?.voted || false;
+
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay feature-upvote-modal';
+    overlay.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="coming-soon-badge">Coming Soon</span>
+                <button class="modal-close-btn" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
+            </div>
+            <h3 class="modal-title">${featureTitle}</h3>
+            <p class="modal-description">${featureDescription}</p>
+            <div class="upvote-section">
+                <p class="upvote-prompt">${hasVoted ? 'Thanks for your vote!' : 'Want this feature? Let us know!'}</p>
+                <button class="btn-upvote ${hasVoted ? 'upvoted' : ''}" ${hasVoted ? 'disabled' : ''}>
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                        <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" transform="rotate(-90 12 12)"/>
+                    </svg>
+                    ${hasVoted ? 'Upvoted!' : 'Upvote this feature'}
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Add event listeners
+    const closeBtn = overlay.querySelector('.modal-close-btn');
+    const upvoteBtn = overlay.querySelector('.btn-upvote');
+
+    closeBtn.addEventListener('click', () => {
+        overlay.remove();
+    });
+
+    if (!hasVoted) {
+        upvoteBtn.addEventListener('click', async () => {
+            // Record the vote in localStorage
+            votes[featureKey] = {
+                voted: true,
+                timestamp: new Date().toISOString()
+            };
+            localStorage.setItem(votesKey, JSON.stringify(votes));
+
+            // Update button state immediately
+            upvoteBtn.classList.add('upvoted');
+            upvoteBtn.disabled = true;
+            upvoteBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+                Upvoted!
+            `;
+            overlay.querySelector('.upvote-prompt').textContent = 'Thanks for your feedback!';
+
+            console.log(`[Feature Vote] User upvoted: ${featureKey}`);
+
+            // Send vote to server for analytics
+            try {
+                const sessionId = localStorage.getItem('pinkpath_session_id') || generateSessionId();
+                await fetch(`${window.API_BASE_URL || 'http://localhost:3001'}/api/feedback/feature-votes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(localStorage.getItem('pinkpath_token') && {
+                            'Authorization': `Bearer ${localStorage.getItem('pinkpath_token')}`
+                        })
+                    },
+                    body: JSON.stringify({
+                        feature_key: featureKey,
+                        session_id: sessionId
+                    })
+                });
+            } catch (error) {
+                // Don't fail the vote if server is unavailable
+                console.warn('[Feature Vote] Failed to send to server:', error);
+            }
+        });
+    }
+
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            overlay.remove();
+        }
+    });
+}
+
+// ========================================
 // EMERGENCY ALERT
 // ========================================
 
-function showEmergencyAlert() {
+async function showEmergencyAlert() {
+    const { isLoggedIn } = getAuthState();
+
+    // Check if user is logged in
+    if (!isLoggedIn) {
+        const confirmed = confirm(
+            '🚨 EMERGENCY ALERT 🚨\n\n' +
+            'You are not signed in.\n\n' +
+            'To send automatic alerts to emergency contacts, please sign in first.\n\n' +
+            'Press OK to call 911, or Cancel to go back.'
+        );
+        if (confirmed) {
+            window.location.href = 'tel:911';
+        }
+        return;
+    }
+
     const confirmed = confirm(
         '🚨 EMERGENCY ALERT 🚨\n\n' +
-        'This will immediately:\n' +
-        '• Send your location to emergency contacts\n' +
-        '• Start recording audio/video (if enabled)\n' +
-        '• Notify local authorities (if configured)\n\n' +
-        'Press OK to confirm, or Cancel to go back.'
+        'This will immediately send your location to your emergency contacts.\n\n' +
+        'Press OK to send SOS alert, or Cancel to go back.'
     );
 
-    if (confirmed) {
-        console.log('🚨 Emergency alert triggered!');
+    if (!confirmed) return;
+
+    console.log('🚨 Emergency alert triggered!');
+
+    // Get current position for SOS
+    let lat = 0, lng = 0;
+    if (currentUserPosition) {
+        lat = currentUserPosition.lat;
+        lng = currentUserPosition.lng;
+    } else {
+        // Try to get current position
+        try {
+            const pos = await getCurrentPosition();
+            lat = pos.coords.latitude;
+            lng = pos.coords.longitude;
+        } catch (error) {
+            console.error('Failed to get position for SOS:', error);
+        }
+    }
+
+    // Trigger SOS through trip controller
+    const result = await triggerSOS(lat, lng);
+
+    if (result.success) {
+        const sentCount = result.notifications?.sent || 0;
         alert(
-            '✅ Emergency Alert Sent!\n\n' +
-            'Your emergency contacts have been notified with your current location.\n\n' +
-            '(This will be fully functional in future updates)'
+            '✅ SOS Alert Sent!\n\n' +
+            `${sentCount} emergency contact(s) have been notified with your location.`
+        );
+    } else {
+        alert(
+            '⚠️ SOS Alert Issue\n\n' +
+            'There was a problem sending the alert: ' + (result.error || 'Unknown error') + '\n\n' +
+            'Please call 911 directly if you need help.'
         );
     }
 }
@@ -2678,6 +3079,32 @@ function resetAddContactForm() {
 }
 
 /**
+ * Handle save trip sharing settings
+ */
+async function handleSaveTripSettings() {
+    const saveBtn = document.getElementById('save-trip-settings-btn');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+    }
+
+    const result = await saveTripSharingSettings();
+
+    if (saveBtn) {
+        saveBtn.disabled = false;
+        if (result.success) {
+            saveBtn.textContent = 'Saved!';
+            setTimeout(() => {
+                saveBtn.textContent = 'Save Settings';
+            }, 2000);
+        } else {
+            saveBtn.textContent = 'Save Settings';
+            alert(result.error || 'Failed to save settings');
+        }
+    }
+}
+
+/**
  * Show form message
  */
 function showFormMessage(el, message, type) {
@@ -2804,14 +3231,13 @@ document.addEventListener('DOMContentLoaded', function() {
         mainRoutePlanner = new RoutePlanner(mainPlannerContainer, {
             instanceId: 'main',
             showPreferences: true,
-            showShareButton: true,
+            showShareButton: false, // Removed for beta - share option moved to route preview
             getCurrentLocation: () => currentUserLocation,
             onLocationSelected: (type, location) => {
                 syncLocationSelection('main', type, location);
             },
             getUserLocation: (inputId, onLocationSelected) => getUserLocationForInput(inputId, onLocationSelected),
-            onRouteRequest: (values, prefs) => findRoute(values, prefs),
-            onShareTrip: () => alert('Share Trip feature coming soon!')
+            onRouteRequest: (values, prefs) => findRoute(values, prefs)
         });
         mainRoutePlanner.init();
         console.log('[Init] Main RoutePlanner initialized');
@@ -2868,7 +3294,8 @@ document.addEventListener('DOMContentLoaded', function() {
     wireButton('back-to-planning-btn', () => goToScreen('screen-plan-route'));
     wireButton('view-crime-details-btn', () => openCrimeDetailsModal(() => currentRouteData, openModal));
     wireButton('start-navigation-btn', startNavigation);
-    wireButton('alternative-routes-btn', () => alert('Alternative routes coming soon!'));
+    wireButton('share-trip-btn', handleShareTripFromPreview);
+    wireButton('alternative-routes-btn', () => showFeatureUpvoteModal('alternative_routes', 'Alternative Routes', 'Compare multiple route options with different safety vs. speed trade-offs.'));
 
     // Initialize Show More toggle for detailed metrics
     initShowMoreToggle();
@@ -2883,8 +3310,12 @@ document.addEventListener('DOMContentLoaded', function() {
     wireButton('emergency-sos-btn', showEmergencyAlert);
     wireButton('call-911-btn', () => alert('Calling 911...'));
     wireButton('alert-contacts-btn', () => alert('Alerting contacts...'));
-    wireButton('share-live-location-btn', () => alert('Share Live Location feature coming in Phase 7!'));
+    wireButton('share-live-location-btn', () => showFeatureUpvoteModal('live_location', 'Live Location Sharing', 'Share your real-time location with trusted contacts during your trip.'));
     wireButton('back-to-top-btn', scrollToTop);
+
+    // Trip sharing action buttons
+    wireButton('check-in-btn', handleCheckIn);
+    wireButton('arrived-btn', handleArrived);
 
     // ========================================
     // FEATURES MODAL
@@ -3108,6 +3539,18 @@ document.addEventListener('DOMContentLoaded', function() {
         contactToDelete = null;
     });
     wireButton('confirm-delete-btn', handleDeleteContact);
+
+    // Trip sharing settings
+    wireButton('save-trip-settings-btn', handleSaveTripSettings);
+
+    // Delay threshold slider - update display value
+    const delaySlider = document.getElementById('setting-delay-threshold');
+    const delayValue = document.getElementById('delay-threshold-value');
+    if (delaySlider && delayValue) {
+        delaySlider.addEventListener('input', () => {
+            delayValue.textContent = `${delaySlider.value} min`;
+        });
+    }
 
     // ========================================
     // CRIME DETAILS MODAL

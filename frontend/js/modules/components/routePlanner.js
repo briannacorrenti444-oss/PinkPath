@@ -119,34 +119,27 @@ class RoutePlanner {
      */
     getTemplate() {
         const preferencesSection = this.showPreferences ? `
-                    <!-- Safety Preferences (Collapsible) -->
-                    <div class="preferences-section">
-                        <button class="preferences-toggle" id="${this.preferencesToggleBtnId}">
+                    <!-- Safety Preferences - Coming Soon -->
+                    <div class="preferences-section preferences-coming-soon">
+                        <div class="preferences-header">
                             <span class="preferences-label">
                                 <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px; margin-right: 8px;">
                                     <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
                                 </svg>
                                 Safety Preferences
                             </span>
-                            <span class="toggle-arrow" id="${this.preferencesArrowId}">
-                                <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px;">
-                                    <path d="M7 10l5 5 5-5z"/>
-                                </svg>
-                            </span>
-                        </button>
-                        <div class="preferences-content" id="${this.preferencesContentId}">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="${this.wellLitCheckboxId}">
-                                <span>Prefer well-lit streets</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="${this.busyAreasCheckboxId}">
-                                <span>Prefer busy, populated areas</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="${this.avoidConstructionCheckboxId}">
-                                <span>Avoid construction zones</span>
-                            </label>
+                            <span class="coming-soon-badge">Coming Soon</span>
+                        </div>
+                        <div class="preferences-coming-soon-content">
+                            <p class="coming-soon-text">Customize your route preferences like well-lit streets and busy areas.</p>
+                            <div class="upvote-row">
+                                <button class="btn-upvote-small" id="${this.instanceId}-upvote-preferences-btn" type="button">
+                                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                                        <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/>
+                                    </svg>
+                                    Upvote
+                                </button>
+                            </div>
                         </div>
                     </div>
         ` : '';
@@ -323,10 +316,25 @@ ${shareButton}
             });
         }
 
-        // Wire "Safety Preferences" toggle button (if visible)
-        if (this.elements.preferencesToggleBtn) {
-            this.elements.preferencesToggleBtn.addEventListener('click', () => {
-                this.togglePreferences();
+        // Wire "Upvote Preferences" button (if visible)
+        const upvoteBtn = document.getElementById(`${this.instanceId}-upvote-preferences-btn`);
+        if (upvoteBtn) {
+            // Check if already voted and update button state
+            const votes = JSON.parse(localStorage.getItem('pinkpath_feature_votes') || '{}');
+            if (votes.safety_preferences?.voted) {
+                upvoteBtn.classList.add('upvoted');
+                upvoteBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                    </svg>
+                    Voted!
+                `;
+                upvoteBtn.disabled = true;
+            }
+
+            upvoteBtn.addEventListener('click', () => {
+                console.log(`[RoutePlanner:${this.instanceId}] Upvote preferences clicked`);
+                this.handleUpvotePreferences(upvoteBtn);
             });
         }
 
@@ -364,21 +372,75 @@ ${shareButton}
     }
 
     // ----------------------------------------
-    // PREFERENCES TOGGLE
+    // FEATURE UPVOTE
     // ----------------------------------------
 
     /**
-     * Toggle the preferences section expanded/collapsed
+     * Handle upvote button click for preferences feature
+     * @param {HTMLElement} button - The upvote button element
      */
-    togglePreferences() {
-        const content = this.elements.preferencesContent;
-        const arrow = this.elements.preferencesArrow;
+    handleUpvotePreferences(button) {
+        const votesKey = 'pinkpath_feature_votes';
+        const votes = JSON.parse(localStorage.getItem(votesKey) || '{}');
 
-        if (content && arrow) {
-            content.classList.toggle('open');
-            arrow.classList.toggle('open');
-            this.preferencesExpanded = content.classList.contains('open');
-            console.log(`[RoutePlanner:${this.instanceId}] Preferences ${this.preferencesExpanded ? 'opened' : 'closed'}`);
+        // Check if already voted
+        if (votes.safety_preferences?.voted) {
+            return;
+        }
+
+        // Visual feedback
+        button.classList.add('upvoted');
+        button.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+            </svg>
+            Voted!
+        `;
+        button.disabled = true;
+
+        // Store vote in localStorage with consistent format
+        votes.safety_preferences = {
+            voted: true,
+            timestamp: new Date().toISOString()
+        };
+        localStorage.setItem(votesKey, JSON.stringify(votes));
+
+        console.log(`[RoutePlanner:${this.instanceId}] Safety preferences upvoted`);
+
+        // Send vote to server for analytics
+        this.sendVoteToServer('safety_preferences');
+    }
+
+    /**
+     * Send feature vote to server for analytics
+     * @param {string} featureKey - The feature key to vote for
+     */
+    async sendVoteToServer(featureKey) {
+        try {
+            // Get or generate session ID
+            let sessionId = localStorage.getItem('pinkpath_session_id');
+            if (!sessionId) {
+                sessionId = 'sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 15);
+                localStorage.setItem('pinkpath_session_id', sessionId);
+            }
+
+            const apiUrl = window.API_BASE_URL || 'http://localhost:3001';
+            await fetch(`${apiUrl}/api/feedback/feature-votes`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(localStorage.getItem('pinkpath_token') && {
+                        'Authorization': `Bearer ${localStorage.getItem('pinkpath_token')}`
+                    })
+                },
+                body: JSON.stringify({
+                    feature_key: featureKey,
+                    session_id: sessionId
+                })
+            });
+        } catch (error) {
+            // Don't fail the vote if server is unavailable
+            console.warn('[RoutePlanner] Failed to send vote to server:', error);
         }
     }
 

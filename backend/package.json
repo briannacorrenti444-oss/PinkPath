@@ -27,7 +27,8 @@
     "passport-google-oauth20": "^2.0.0",
     "passport-local": "^1.0.0",
     "pg": "^8.11.3",
-    "pino-pretty": "^10.3.1"
+    "pino-pretty": "^10.3.1",
+    "twilio": "^5.0.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"

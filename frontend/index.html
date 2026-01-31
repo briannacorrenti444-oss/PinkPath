@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
     <title>PinkPath - Navigate Safely, Always</title>
-    <link rel="stylesheet" href="styles.css?v=6">
+    <link rel="stylesheet" href="styles.css?v=7">
 
     <!-- Google Maps JavaScript API -->
     <!--
@@ -470,12 +470,20 @@
                     <!-- Alternative routes UI removed for beta - re-enable post-launch -->
 
                     <!-- Action Buttons -->
-                    <div class="action-buttons">
+                    <div class="action-buttons action-buttons-row">
                         <!-- Button to begin turn-by-turn navigation -->
                         <button class="btn-large btn-primary" id="start-navigation-btn">
                             Start Navigation
                         </button>
+                        <!-- Button to share trip via SMS -->
+                        <button class="btn-large btn-secondary btn-share-trip" id="share-trip-btn">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                                <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/>
+                            </svg>
+                            Share Trip
+                        </button>
                     </div>
+                    <p class="action-buttons-hint">Share your route with a friend or family member before you go</p>
                 </div>
             </div>
         </section>
@@ -511,6 +519,14 @@
                                 <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                             </svg>
                         </button>
+                    </div>
+
+                    <!-- Trip Sharing Banner (shown when sharing is active) -->
+                    <div class="trip-sharing-banner" id="trip-sharing-banner" style="display: none;">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 5.9c1.16 0 2.1.94 2.1 2.1s-.94 2.1-2.1 2.1S9.9 9.16 9.9 8s.94-2.1 2.1-2.1m0 9c2.97 0 6.1 1.46 6.1 2.1v1.1H5.9V17c0-.64 3.13-2.1 6.1-2.1M12 4C9.79 4 8 5.79 8 8s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 9c-2.67 0-8 1.34-8 4v3h16v-3c0-2.66-5.33-4-8-4z"/>
+                        </svg>
+                        <span>Sharing with your contacts</span>
                     </div>
 
                     <!-- Step Counter (Preview Mode Only) -->
@@ -556,6 +572,22 @@
                             <span class="stat-label">safety</span>
                         </div>
                     </div>
+
+                    <!-- Trip Action Buttons (shown when sharing is active) -->
+                    <div class="trip-action-buttons" id="trip-action-buttons" style="display: none;">
+                        <button class="btn-check-in" id="check-in-btn">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                            </svg>
+                            I'm OK
+                        </button>
+                        <button class="btn-arrived" id="arrived-btn">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                            </svg>
+                            I Arrived
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Emergency Section -->
@@ -595,19 +627,21 @@
                         </svg>
                         <span>Add Safety Note</span>
                     </button>
-                    <!-- Button to share live location (Phase 7 feature) -->
-                    <button class="quick-action-btn" id="share-live-location-btn">
+                    <!-- Button to share live location (Coming Soon) -->
+                    <button class="quick-action-btn quick-action-coming-soon" id="share-live-location-btn">
+                        <span class="quick-action-badge">Coming Soon</span>
                         <svg viewBox="0 0 24 24" fill="currentColor" style="width: 28px; height: 28px;">
                             <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
                         </svg>
-                        <span>Share Live Location</span>
+                        <span>Live Location</span>
                     </button>
-                    <!-- Button to show alternative routes -->
-                    <button class="quick-action-btn" id="alternative-routes-btn">
+                    <!-- Button to show alternative routes (Coming Soon) -->
+                    <button class="quick-action-btn quick-action-coming-soon" id="alternative-routes-btn">
+                        <span class="quick-action-badge">Coming Soon</span>
                         <svg viewBox="0 0 24 24" fill="currentColor" style="width: 28px; height: 28px;">
                             <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
                         </svg>
-                        <span>Alternative Routes</span>
+                        <span>Alt Routes</span>
                     </button>
                     <!-- Button to rate route (Preview Mode Testing) -->
                     <button class="quick-action-btn" id="rate-route-preview-btn" style="display: none;">
@@ -806,6 +840,75 @@
                         </svg>
                         <span>Free plan allows 1 emergency contact. Upgrade for more.</span>
                     </div>
+                </div>
+
+                <!-- Trip Sharing Settings -->
+                <div class="card settings-card" id="trip-sharing-settings-card">
+                    <h3 class="settings-title">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                            <path d="M12 5.9c1.16 0 2.1.94 2.1 2.1s-.94 2.1-2.1 2.1S9.9 9.16 9.9 8s.94-2.1 2.1-2.1m0 9c2.97 0 6.1 1.46 6.1 2.1v1.1H5.9V17c0-.64 3.13-2.1 6.1-2.1M12 4C9.79 4 8 5.79 8 8s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 9c-2.67 0-8 1.34-8 4v3h16v-3c0-2.66-5.33-4-8-4z"/>
+                        </svg>
+                        Trip Sharing
+                        <span class="beta-tag">BETA</span>
+                    </h3>
+                    <p class="settings-description">
+                        Share trip updates with your contacts. Currently in manual mode — we'll prepare the message, you choose who to send it to.
+                    </p>
+
+                    <!-- Beta notice banner -->
+                    <div class="settings-beta-notice">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                        </svg>
+                        <span>Automatic notifications &amp; saved emergency contacts coming soon</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Share trips by default</span>
+                            <span class="setting-hint">Prompt to share when you start navigation</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-share-default" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Prompt arrival message</span>
+                            <span class="setting-hint">Prompt to send message when you arrive</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-notify-arrival" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- BETA: Delay settings hidden - require automatic notifications -->
+                    <div class="setting-item setting-item-delay" style="display: none;">
+                        <div class="setting-info">
+                            <span class="setting-label">Alert if delayed</span>
+                            <span class="setting-hint coming-soon">Coming soon - requires automatic notifications</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-notify-delay" checked disabled>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item setting-item-slider setting-item-delay" style="display: none;">
+                        <div class="setting-info">
+                            <span class="setting-label">Delay threshold</span>
+                            <span class="setting-hint coming-soon">Coming soon - requires automatic notifications</span>
+                        </div>
+                        <div class="slider-control">
+                            <input type="range" id="setting-delay-threshold" min="5" max="60" value="15" step="5" disabled>
+                            <span class="slider-value" id="delay-threshold-value">15 min</span>
+                        </div>
+                    </div>
+
+                    <button class="btn-primary" id="save-trip-settings-btn">Save Settings</button>
                 </div>
 
                 <!-- Logout Section -->
@@ -1405,6 +1508,6 @@
     </footer>
 
     <!-- Main JavaScript (ES6 Module) -->
-    <script type="module" src="js/script.js?v=6"></script>
+    <script type="module" src="js/script.js?v=7"></script>
 </body>
 </html>
