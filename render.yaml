@@ -13,10 +13,9 @@ services:
     region: oregon  # or ohio, frankfurt, singapore
     plan: free      # free tier for beta testing
 
-    # Build configuration
-    rootDir: backend
-    buildCommand: npm ci --omit=dev
-    startCommand: node src/server.js
+    # Build configuration (monorepo - build from root)
+    buildCommand: npm ci --omit=dev --workspace=backend
+    startCommand: node backend/src/server.js
 
     # Health check
     healthCheckPath: /health
