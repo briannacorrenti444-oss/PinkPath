@@ -57,8 +57,9 @@ function handleOAuthCallback() {
     }
 
     // Clean up URL (remove token/error from address bar)
-    const cleanUrl = window.location.pathname;
-    window.history.replaceState({}, document.title, cleanUrl);
+    // Redirect to home page - safer than staying on /auth/callback
+    // Also handles edge case of double slashes in pathname
+    window.history.replaceState({}, document.title, '/');
 
     // Handle error
     if (error) {
