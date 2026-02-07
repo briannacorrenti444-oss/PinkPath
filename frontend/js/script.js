@@ -2567,6 +2567,19 @@ let selectedHazardTypes = [];
 let currentReportScope = 'spot';
 
 /**
+ * Get the active map for reporting based on current screen
+ * @returns {google.maps.Map|null} The active map instance
+ */
+function getActiveMapForReporting() {
+    // If navigating and navigation map exists, use it
+    if (isNavigating && navigationMap) {
+        return navigationMap;
+    }
+    // Otherwise use route map
+    return routeMap;
+}
+
+/**
  * Open the hazard report modal
  */
 function openReportModal() {
@@ -2607,9 +2620,10 @@ function openReportModal() {
 
     openModal('report-hazard-modal');
 
-    // Enable map click for spot reports if on route map
-    if (routeMap && currentReportScope === 'spot') {
-        reportModalMapListener = routeMap.addListener('click', handleMapClickForReport);
+    // Enable map click for spot reports on active map
+    const activeMap = getActiveMapForReporting();
+    if (activeMap && currentReportScope === 'spot') {
+        reportModalMapListener = activeMap.addListener('click', handleMapClickForReport);
     }
 }
 
@@ -2721,9 +2735,10 @@ function handleReportScopeChange(event) {
     if (currentReportScope === 'spot') {
         if (spotSection) spotSection.style.display = 'block';
 
-        // Enable map click
-        if (routeMap && !reportModalMapListener) {
-            reportModalMapListener = routeMap.addListener('click', handleMapClickForReport);
+        // Enable map click on active map
+        const activeMap = getActiveMapForReporting();
+        if (activeMap && !reportModalMapListener) {
+            reportModalMapListener = activeMap.addListener('click', handleMapClickForReport);
         }
     } else {
         if (spotSection) spotSection.style.display = 'none';
@@ -2898,12 +2913,14 @@ function addHazardMarkerToMap(location, hazardTypes) {
 }
 
 /**
- * Update preview mode button visibility
+ * Update navigation UI elements
+ * Rate button is now always visible (both preview and live modes)
  */
 function updatePreviewModeUI() {
     const rateBtn = document.getElementById('rate-route-preview-btn');
     if (rateBtn) {
-        rateBtn.style.display = isPreviewMode ? 'flex' : 'none';
+        // Always show rate button during navigation (preview or live)
+        rateBtn.style.display = 'flex';
     }
 }
 
@@ -4133,7 +4150,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // SEGMENT PIN PANEL
     // ========================================
     console.log('[Init] Setting up segment pin panel...');
-    wireButton('add-safety-note-btn', openPinPanel);
+    wireButton('add-safety-note-btn', openReportModal);
     wireButton('close-pin-panel-btn', closePinPanel);
     wireButton('clear-pin-location-btn', clearPinLocation);
     wireButton('submit-pin-btn', handlePinSubmit);
