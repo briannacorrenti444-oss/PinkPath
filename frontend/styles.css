@@ -32,6 +32,125 @@
     --transition: all 0.3s ease;
 }
 
+/* === DARK MODE VARIABLES === */
+body.dark {
+    --pink-pale: #1a1a2e;
+    --gray-dark: #e2e8f0;
+    --gray-medium: #a0aec0;
+    --gray-light: #4a5568;
+    --gray-lighter: #2d3748;
+    --gray-pale: #1a202c;
+    --white: #0f0f1a;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.5);
+}
+
+body.dark {
+    background-color: var(--gray-pale);
+    color: var(--gray-dark);
+}
+
+body.dark .main-header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1a 100%);
+    border-bottom-color: #2d3748;
+}
+
+body.dark .hero {
+    background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1a 100%);
+}
+
+body.dark .screen {
+    background: var(--gray-pale);
+}
+
+body.dark .card,
+body.dark .modal-content,
+body.dark .modal-dialog,
+body.dark .route-panel,
+body.dark .safety-card,
+body.dark .info-card {
+    background: #1e1e32;
+    border-color: #2d3748;
+}
+
+body.dark input,
+body.dark textarea,
+body.dark select {
+    background: #1e1e32;
+    border-color: #4a5568;
+    color: var(--gray-dark);
+}
+
+body.dark input::placeholder,
+body.dark textarea::placeholder {
+    color: #718096;
+}
+
+body.dark .btn-secondary {
+    background: #2d3748;
+    color: #e2e8f0;
+    border-color: #4a5568;
+}
+
+body.dark .btn-secondary:hover {
+    background: #4a5568;
+}
+
+body.dark .mobile-menu {
+    background: #1a1a2e;
+}
+
+body.dark .nav-link {
+    color: #e2e8f0;
+}
+
+body.dark .feature-card {
+    background: #1e1e32;
+    border-color: #2d3748;
+}
+
+body.dark .step-card {
+    background: #1e1e32;
+}
+
+body.dark .footer {
+    background: #0f0f1a;
+    border-top-color: #2d3748;
+}
+
+/* Dark mode toggle button */
+.theme-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gray-dark);
+    transition: var(--transition);
+}
+
+.theme-toggle:hover {
+    background: rgba(255, 20, 147, 0.1);
+}
+
+body.dark .theme-toggle {
+    color: #e2e8f0;
+}
+
+.theme-toggle .icon-sun,
+body.dark .theme-toggle .icon-moon {
+    display: none;
+}
+
+body.dark .theme-toggle .icon-sun,
+.theme-toggle .icon-moon {
+    display: block;
+}
+
 /* === RESET & BASE === */
 * {
     margin: 0;

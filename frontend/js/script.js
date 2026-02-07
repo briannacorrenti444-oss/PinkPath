@@ -41,7 +41,8 @@ import {
     createRouteMarkers,
     removeMarker,
     fitBoundsToPoints,
-    updateMarkerPosition
+    updateMarkerPosition,
+    setMapStyle
 } from './modules/controllers/mapController.js';
 
 // Import safety controller
@@ -131,6 +132,74 @@ import {
 } from './modules/controllers/offlineController.js';
 
 console.log('[PinkPath] All imports loaded successfully');
+
+// ========================================
+// THEME MANAGER (Dark Mode)
+// ========================================
+
+const THEME_STORAGE_KEY = 'pinkpath_theme';
+
+/**
+ * Initialize theme from localStorage or system preference
+ */
+function initTheme() {
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+
+    if (savedTheme === 'dark') {
+        document.body.classList.add('dark');
+    } else if (savedTheme === 'light') {
+        document.body.classList.remove('dark');
+    } else {
+        // No saved preference - check system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.body.classList.add('dark');
+        }
+    }
+
+    console.log('[Theme] Initialized:', document.body.classList.contains('dark') ? 'dark' : 'light');
+}
+
+/**
+ * Toggle between light and dark themes
+ */
+function toggleTheme() {
+    const isDark = document.body.classList.toggle('dark');
+    localStorage.setItem(THEME_STORAGE_KEY, isDark ? 'dark' : 'light');
+
+    console.log('[Theme] Toggled to:', isDark ? 'dark' : 'light');
+
+    // Update map styles if maps exist
+    updateMapTheme(isDark);
+}
+
+/**
+ * Update all maps to match current theme
+ * @param {boolean} isDark - Whether dark mode is active
+ */
+function updateMapTheme(isDark) {
+    const mode = isDark ? 'dark' : 'light';
+
+    // Update route map
+    if (typeof routeMap !== 'undefined' && routeMap) {
+        setMapStyle(routeMap, mode);
+    }
+
+    // Update navigation map
+    if (typeof navigationMap !== 'undefined' && navigationMap) {
+        setMapStyle(navigationMap, mode);
+    }
+}
+
+/**
+ * Get current theme
+ * @returns {string} 'dark' or 'light'
+ */
+function getCurrentTheme() {
+    return document.body.classList.contains('dark') ? 'dark' : 'light';
+}
+
+// Initialize theme immediately (before DOM ready) to prevent flash
+initTheme();
 
 // ========================================
 // UTILITY FUNCTIONS
@@ -3535,6 +3604,139 @@ function showShareTripModal(message) {
 }
 
 // ========================================
+// ALERT CONTACTS
+// ========================================
+
+/**
+ * Handle alert contacts button - sends a friendly trip notification
+ * Works during route preview or active navigation
+ */
+function handleAlertContacts() {
+    // Get destination from navigation or preview context
+    let destination = 'my destination';
+    let origin = 'my current location';
+    let duration = '';
+    let eta = '';
+
+    // Try to get info from active navigation first
+    if (isNavigating && currentRouteData) {
+        destination = document.getElementById('main-destination')?.value ||
+            document.getElementById('destination-input')?.value ||
+            'my destination';
+        origin = document.getElementById('main-start-location')?.value ||
+            document.getElementById('start-input')?.value ||
+            'my current location';
+        duration = currentRouteData.durationText || currentRouteData.duration || '';
+
+        if (currentRouteData.durationValue) {
+            const arrivalTime = new Date(Date.now() + currentRouteData.durationValue * 1000);
+            eta = arrivalTime.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+    } else if (currentRouteData) {
+        // Route preview context
+        destination = document.getElementById('main-destination')?.value ||
+            document.getElementById('destination-input')?.value ||
+            'my destination';
+        origin = document.getElementById('main-start-location')?.value ||
+            document.getElementById('start-input')?.value ||
+            'my current location';
+        duration = currentRouteData.durationText || currentRouteData.duration || '';
+
+        if (currentRouteData.durationValue) {
+            const arrivalTime = new Date(Date.now() + currentRouteData.durationValue * 1000);
+            eta = arrivalTime.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+    }
+
+    // Build the friendly alert message
+    let message = `Hey! I'm using PinkPath to navigate safely.`;
+
+    if (destination !== 'my destination') {
+        message += `\n\nI'm heading to ${destination}`;
+        if (origin !== 'my current location') {
+            message += ` from ${origin}`;
+        }
+        message += `.`;
+    }
+
+    if (eta) {
+        message += `\n\nExpected arrival: ${eta}`;
+    }
+    if (duration) {
+        message += `\nWalk time: ${duration}`;
+    }
+
+    message += `\n\nI'll update you when I arrive!`;
+    message += `\n\n- Sent via PinkPath`;
+
+    // Show the alert modal
+    showAlertContactsModal(message);
+}
+
+/**
+ * Show alert contacts modal with message preview
+ * @param {string} message - The message to send
+ */
+function showAlertContactsModal(message) {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay manual-sms-modal';
+    overlay.innerHTML = `
+        <div class="modal-content">
+            <h3 class="modal-title">Alert Your Contacts</h3>
+            <p class="modal-description">
+                Let someone know about your trip. We'll open your Messages app with this message ready to send.
+            </p>
+            <div class="sms-preview">
+                <div class="sms-preview-label">Message preview:</div>
+                <div class="sms-preview-text">${message.replace(/\n/g, '<br>')}</div>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-secondary modal-skip-btn">Cancel</button>
+                <button class="btn-primary modal-send-btn">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+                    </svg>
+                    Open Messages
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Add event listeners
+    const skipBtn = overlay.querySelector('.modal-skip-btn');
+    const sendBtn = overlay.querySelector('.modal-send-btn');
+
+    skipBtn.addEventListener('click', () => {
+        overlay.remove();
+    });
+
+    sendBtn.addEventListener('click', () => {
+        // Open SMS app with message
+        const encodedMessage = encodeURIComponent(message);
+        window.location.href = `sms:?body=${encodedMessage}`;
+        overlay.remove();
+    });
+
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            overlay.remove();
+        }
+    });
+}
+
+// ========================================
 // FEATURE UPVOTE MODAL
 // ========================================
 
@@ -4237,6 +4439,7 @@ document.addEventListener('DOMContentLoaded', function() {
     wireButton('nav-plan-route-btn', () => goToScreen('screen-plan-route'));
     wireButton('nav-features-btn', scrollToFeatures);
     wireButton('nav-signin-btn', () => goToScreen('screen-auth'));
+    wireButton('theme-toggle-btn', toggleTheme);
 
     // ========================================
     // MOBILE MENU
@@ -4277,7 +4480,7 @@ document.addEventListener('DOMContentLoaded', function() {
     wireButton('btn-next-step', nextStep);
     wireButton('emergency-sos-btn', showEmergencyAlert);
     wireButton('call-911-btn', () => alert('Calling 911...'));
-    wireButton('alert-contacts-btn', () => alert('Alerting contacts...'));
+    wireButton('alert-contacts-btn', handleAlertContacts);
     wireButton('share-live-location-btn', () => showFeatureUpvoteModal('live_location', 'Live Location Sharing', 'Share your real-time location with trusted contacts during your trip.'));
     wireButton('back-to-top-btn', scrollToTop);
 

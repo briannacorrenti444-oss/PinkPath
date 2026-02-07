@@ -4,7 +4,7 @@
 // Uses PlaceAutocompleteElement (new API as of March 2025)
 // ========================================
 
-import { SF_BOUNDS } from '../config.js';
+import { SF_BOUNDS, API_BASE_URL } from '../config.js';
 
 /**
  * Store for autocomplete instances to clean up later
@@ -235,5 +235,127 @@ export async function reverseGeocode(lat, lng) {
             }
         });
     });
+}
+
+/**
+ * Geocode an address string to coordinates
+ * Uses the backend API endpoint for server-side geocoding
+ *
+ * @param {string} address - The address to geocode
+ * @returns {Promise<object|null>} Location object or null
+ */
+export async function geocodeAddress(address) {
+    if (!address || address.trim().length < 5) {
+        console.warn('[searchController] Address too short for geocoding');
+        return null;
+    }
+
+    try {
+        console.log('[searchController] Geocoding address:', address);
+
+        const response = await fetch(`${API_BASE_URL}/api/routes/geocode`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ address: address.trim() })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            console.warn('[searchController] Geocoding failed:', error.message || 'Unknown error');
+            return null;
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.location) {
+            const location = {
+                lat: data.location.lat,
+                lng: data.location.lng,
+                name: data.location.formatted_address || address,
+                formattedAddress: data.location.formatted_address,
+                placeId: data.location.place_id || null
+            };
+            console.log('[searchController] Geocoded successfully:', location);
+            return location;
+        }
+
+        return null;
+    } catch (error) {
+        console.error('[searchController] Geocoding error:', error);
+        return null;
+    }
+}
+
+/**
+ * Set up paste handler for autocomplete inputs
+ * Detects when user pastes text and attempts to geocode it
+ *
+ * @param {string} inputId - The ID of the autocomplete input
+ * @param {Function} onLocationSelected - Called with location object when geocoding succeeds
+ */
+export function setupPasteHandler(inputId, onLocationSelected) {
+    // Get the wrapper or element
+    const instance = autocompleteInstances.get(inputId);
+    if (!instance) {
+        console.warn(`[searchController] No autocomplete instance for: ${inputId}`);
+        return;
+    }
+
+    const { wrapper, element } = instance;
+    const target = wrapper || element;
+
+    // Debounce timer
+    let debounceTimer = null;
+
+    // Listen for paste events on the wrapper (captures paste on shadow DOM input)
+    target.addEventListener('paste', async (event) => {
+        // Clear any pending debounce
+        if (debounceTimer) {
+            clearTimeout(debounceTimer);
+        }
+
+        // Get pasted text
+        let pastedText = '';
+        if (event.clipboardData) {
+            pastedText = event.clipboardData.getData('text');
+        }
+
+        if (!pastedText || pastedText.length < 10) {
+            // Too short, probably not a full address
+            return;
+        }
+
+        console.log('[searchController] Paste detected:', pastedText.substring(0, 50) + '...');
+
+        // Debounce to let user finish pasting
+        debounceTimer = setTimeout(async () => {
+            // Show loading state if possible
+            target.style.opacity = '0.7';
+
+            const location = await geocodeAddress(pastedText);
+
+            // Reset loading state
+            target.style.opacity = '1';
+
+            if (location) {
+                console.log('[searchController] Paste geocoded successfully');
+                onLocationSelected(location);
+
+                // Update the input value to show formatted address
+                const input = target.querySelector('input') ||
+                              (element && element.shadowRoot ? element.shadowRoot.querySelector('input') : null);
+                if (input) {
+                    input.value = location.formattedAddress || location.name;
+                }
+            } else {
+                console.log('[searchController] Could not geocode pasted address');
+                // Don't interrupt user - they can still use dropdown
+            }
+        }, 500);
+    });
+
+    console.log(`[searchController] Paste handler set up for: ${inputId}`);
 }
 

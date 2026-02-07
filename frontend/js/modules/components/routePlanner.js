@@ -3,7 +3,7 @@
 // Reusable route planning form widget
 // ========================================
 
-import { setupAutocomplete } from '../controllers/searchController.js';
+import { setupAutocomplete, setupPasteHandler } from '../controllers/searchController.js';
 
 /**
  * RoutePlanner - A reusable route planning form component
@@ -259,25 +259,35 @@ ${shareButton}
      * Set up autocomplete for start and destination inputs
      */
     setupAutocomplete() {
+        const startCallback = (location) => {
+            this.onLocationSelected('start', location);
+            console.log(`[RoutePlanner:${this.instanceId}] Start location selected:`, location.name);
+        };
+
+        const destCallback = (location) => {
+            this.onLocationSelected('destination', location);
+            console.log(`[RoutePlanner:${this.instanceId}] Destination selected:`, location.name);
+        };
+
         // Set up autocomplete for start location input
         setupAutocomplete(
             this.startInputId,
             this.getCurrentLocation,
-            (location) => {
-                this.onLocationSelected('start', location);
-                console.log(`[RoutePlanner:${this.instanceId}] Start location selected:`, location.name);
-            }
+            startCallback
         );
 
         // Set up autocomplete for destination input
         setupAutocomplete(
             this.destinationInputId,
             this.getCurrentLocation,
-            (location) => {
-                this.onLocationSelected('destination', location);
-                console.log(`[RoutePlanner:${this.instanceId}] Destination selected:`, location.name);
-            }
+            destCallback
         );
+
+        // Set up paste handlers after a delay to ensure autocomplete is initialized
+        setTimeout(() => {
+            setupPasteHandler(this.startInputId, startCallback);
+            setupPasteHandler(this.destinationInputId, destCallback);
+        }, 500);
 
         console.log(`[RoutePlanner:${this.instanceId}] Autocomplete initialized`);
     }
