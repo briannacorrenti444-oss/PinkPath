@@ -484,6 +484,16 @@
                         </button>
                     </div>
                     <p class="action-buttons-hint">Share your route with a friend or family member before you go</p>
+
+                    <!-- Report Hazard Button -->
+                    <div class="report-hazard-section">
+                        <button class="btn-report-hazard" id="report-hazard-btn">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                            </svg>
+                            Report Issue on Route
+                        </button>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1180,7 +1190,7 @@
     <div class="modal" id="route-rating-modal">
         <div class="modal-dialog modal-medium">
             <div class="modal-header">
-                <h2>How was your route?</h2>
+                <h2 id="rating-modal-title">You've Arrived!</h2>
                 <button class="icon-button" id="rating-modal-close-btn">
                     <svg viewBox="0 0 24 24" fill="currentColor">
                         <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -1188,6 +1198,32 @@
                 </button>
             </div>
             <div class="modal-body">
+                <!-- Arrival Celebration (shown first) -->
+                <div class="arrival-celebration" id="arrival-celebration">
+                    <div class="celebration-icon">
+                        <div class="celebration-circle">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                            </svg>
+                        </div>
+                        <div class="celebration-sparkles">
+                            <span class="sparkle sparkle-1"></span>
+                            <span class="sparkle sparkle-2"></span>
+                            <span class="sparkle sparkle-3"></span>
+                            <span class="sparkle sparkle-4"></span>
+                        </div>
+                    </div>
+                    <h3 class="celebration-title">You made it safely!</h3>
+                    <p class="celebration-subtitle">Great job navigating with PinkPath</p>
+                    <button class="btn-large btn-primary" id="rate-route-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" style="margin-right: 8px;">
+                            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                        </svg>
+                        Rate This Route
+                    </button>
+                    <button class="btn-text" id="skip-rating-btn">Skip</button>
+                </div>
+
                 <!-- Auth Gate Message (shown when not logged in) -->
                 <div class="rating-auth-gate" id="rating-auth-gate" style="display: none;">
                     <div class="auth-gate-icon">
@@ -1202,33 +1238,38 @@
                 </div>
 
                 <!-- Rating Form (shown when logged in) -->
-                <div class="rating-form" id="rating-form">
-                    <!-- 3-Level Rating Scale -->
-                    <div class="rating-scale">
-                        <button class="rating-option" data-rating="unsafe">
-                            <span class="rating-icon rating-icon-unsafe">
+                <div class="rating-form" id="rating-form" style="display: none;">
+                    <!-- 5-Star Rating -->
+                    <div class="star-rating-section">
+                        <p class="star-rating-prompt">How safe did you feel on this route?</p>
+                        <div class="star-rating" id="star-rating">
+                            <button class="star-btn" data-rating="1" aria-label="1 star">
                                 <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
                                 </svg>
-                            </span>
-                            <span class="rating-label">Felt Unsafe</span>
-                        </button>
-                        <button class="rating-option" data-rating="neutral">
-                            <span class="rating-icon rating-icon-neutral">
+                            </button>
+                            <button class="star-btn" data-rating="2" aria-label="2 stars">
                                 <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M9 14h6v1.5H9V14zm3-10c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-9c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm-4 0c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm8 0c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/>
+                                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
                                 </svg>
-                            </span>
-                            <span class="rating-label">Neutral</span>
-                        </button>
-                        <button class="rating-option" data-rating="safe">
-                            <span class="rating-icon rating-icon-safe">
+                            </button>
+                            <button class="star-btn" data-rating="3" aria-label="3 stars">
                                 <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
+                                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
                                 </svg>
-                            </span>
-                            <span class="rating-label">Felt Safe</span>
-                        </button>
+                            </button>
+                            <button class="star-btn" data-rating="4" aria-label="4 stars">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                                </svg>
+                            </button>
+                            <button class="star-btn" data-rating="5" aria-label="5 stars">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="star-rating-label" id="star-rating-label">Tap to rate</p>
                     </div>
 
                     <!-- Reason Selection (changes based on rating) -->
@@ -1268,6 +1309,133 @@
                     <h3>Thank you!</h3>
                     <p>Your feedback helps keep others safe.</p>
                     <button class="btn-primary" id="rating-done-btn">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- REPORT HAZARD MODAL -->
+    <div class="modal" id="report-hazard-modal">
+        <div class="modal-dialog modal-medium">
+            <div class="modal-header">
+                <h2>Report a Hazard</h2>
+                <button class="icon-button" id="report-modal-close-btn">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Auth Gate Message (shown when not logged in) -->
+                <div class="report-auth-gate" id="report-auth-gate" style="display: none;">
+                    <div class="auth-gate-icon">
+                        <svg viewBox="0 0 24 24" fill="currentColor" style="width: 48px; height: 48px; color: var(--warning);">
+                            <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                        </svg>
+                    </div>
+                    <h3>Help keep others safe</h3>
+                    <p>Sign in to report hazards and help improve route safety for everyone.</p>
+                    <button class="btn-primary btn-large" id="report-sign-in-btn">Sign In to Report</button>
+                    <button class="btn-text" id="report-skip-btn">Cancel</button>
+                </div>
+
+                <!-- Report Form (shown when logged in) -->
+                <div class="report-form" id="report-form">
+                    <!-- Report Scope Selection -->
+                    <div class="report-scope-section">
+                        <h4>Where is the hazard?</h4>
+                        <div class="report-scope-options">
+                            <label class="scope-option">
+                                <input type="radio" name="report-scope" value="spot" checked>
+                                <span class="scope-option-content">
+                                    <span class="scope-icon">
+                                        <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+                                            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                                        </svg>
+                                    </span>
+                                    <span class="scope-label">Specific Spot</span>
+                                    <span class="scope-hint">Tap map to mark location</span>
+                                </span>
+                            </label>
+                            <label class="scope-option">
+                                <input type="radio" name="report-scope" value="route">
+                                <span class="scope-option-content">
+                                    <span class="scope-icon">
+                                        <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+                                            <path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/>
+                                        </svg>
+                                    </span>
+                                    <span class="scope-label">Entire Route</span>
+                                    <span class="scope-hint">Issue affects whole route</span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Spot Location Picker (shown when scope is 'spot') -->
+                    <div class="spot-location-section" id="spot-location-section">
+                        <p class="location-hint">Tap the map to select the hazard location</p>
+                        <div class="report-location-preview" id="report-location-preview" style="display: none;">
+                            <span class="location-coords" id="report-location-coords">Location selected</span>
+                            <button class="btn-text btn-small" id="clear-report-location-btn">Clear</button>
+                        </div>
+                    </div>
+
+                    <!-- Hazard Type Selection (Multiple Checkboxes) -->
+                    <div class="hazard-types-section">
+                        <h4>What type of hazard? <span class="hint-text">(select all that apply)</span></h4>
+                        <div class="hazard-types-grid" id="hazard-types-grid">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Severity Selection -->
+                    <div class="severity-section">
+                        <h4>How severe is this hazard?</h4>
+                        <div class="severity-options">
+                            <label class="severity-option">
+                                <input type="radio" name="report-severity" value="low">
+                                <span class="severity-badge severity-low">Low</span>
+                            </label>
+                            <label class="severity-option">
+                                <input type="radio" name="report-severity" value="medium" checked>
+                                <span class="severity-badge severity-medium">Medium</span>
+                            </label>
+                            <label class="severity-option">
+                                <input type="radio" name="report-severity" value="high">
+                                <span class="severity-badge severity-high">High</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Optional Comment -->
+                    <div class="report-comment-section">
+                        <label for="report-comment-input">Additional details (optional)</label>
+                        <textarea
+                            id="report-comment-input"
+                            placeholder="Describe the hazard or provide more context..."
+                            maxlength="500"
+                            rows="3"
+                        ></textarea>
+                        <span class="char-count"><span id="report-char-count">0</span>/500</span>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button class="btn-large btn-primary" id="submit-report-btn" disabled>
+                        Submit Report
+                    </button>
+                </div>
+
+                <!-- Success Message -->
+                <div class="report-success" id="report-success" style="display: none;">
+                    <div class="success-icon">
+                        <svg viewBox="0 0 24 24" fill="currentColor" style="width: 64px; height: 64px; color: #48bb78;">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                        </svg>
+                    </div>
+                    <h3>Thank you!</h3>
+                    <p>Your report helps keep everyone safe.</p>
+                    <button class="btn-primary" id="report-done-btn">Done</button>
                 </div>
             </div>
         </div>

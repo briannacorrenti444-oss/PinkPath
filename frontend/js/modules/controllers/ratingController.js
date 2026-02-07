@@ -140,6 +140,7 @@ export function clearRatingContext() {
  * Submit overall route rating
  * @param {object} ratingData - Rating data
  * @param {string} ratingData.rating - 'unsafe', 'neutral', or 'safe'
+ * @param {number} ratingData.starRating - 1-5 star rating (optional)
  * @param {Array<string>} ratingData.reasons - Selected reason codes
  * @param {string} ratingData.comment - Optional comment
  * @returns {Promise<{success: boolean, ratingId?: number, error?: string}>}
@@ -156,6 +157,7 @@ export async function submitRouteRating(ratingData) {
     try {
         const payload = {
             rating: ratingData.rating,
+            starRating: ratingData.starRating || null,
             reasons: ratingData.reasons || [],
             comment: ratingData.comment || null,
             ...currentRatingContext,

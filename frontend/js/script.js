@@ -106,6 +106,19 @@ import {
     saveTripSharingSettings
 } from './modules/controllers/tripController.js';
 
+// Import reporting controller
+import {
+    loadHazardCategories,
+    getHazardCategories,
+    canSubmitReport,
+    setReportContext,
+    getReportContext,
+    clearReportContext,
+    submitHazardReport,
+    getNearbyHazards,
+    getRouteHazards
+} from './modules/controllers/reportingController.js';
+
 console.log('[PinkPath] All imports loaded successfully');
 
 // ========================================
@@ -1891,6 +1904,13 @@ function updateNavigationStats() {
         if (navDurationElement) {
             navDurationElement.textContent = formatDuration(remainingTimeMinutes);
         }
+
+        // Auto-detect arrival when within ~100 feet (0.02 miles) of destination
+        // Only trigger if actively navigating (not in preview mode)
+        if (isNavigating && !isPreviewMode && remainingDistance < 0.02) {
+            console.log('[Navigation] Auto-detected arrival - within 100ft of destination');
+            handleArrival();
+        }
     }
 }
 
@@ -1926,14 +1946,84 @@ function handleArrival() {
     if (currentEl) currentEl.textContent = 'You have reached your destination';
     if (nextEl) nextEl.textContent = '';
 
-    // Show rating modal after a brief delay
+    // End trip as arrived
+    const activeTrip = getActiveTrip();
+    if (activeTrip) {
+        endTrip('arrived');
+    }
+
+    // Show arrival celebration modal after a brief delay
     setTimeout(() => {
-        showRatingModal();
-    }, 1500);
+        showArrivalCelebration();
+    }, 1000);
 }
 
 /**
- * Show the route rating modal
+ * Show the arrival celebration screen
+ */
+function showArrivalCelebration() {
+    console.log('[PinkPath] Showing arrival celebration...');
+
+    // Set up rating context with current route info
+    const currentRoute = routeOptions[selectedRouteIndex];
+    if (selectedStart && selectedDestination) {
+        setRatingContext({
+            startLat: selectedStart.lat,
+            startLng: selectedStart.lng,
+            endLat: selectedDestination.lat,
+            endLng: selectedDestination.lng,
+            polyline: currentRoute?.polyline || null,
+            wasPreviewMode: isPreviewMode,
+        });
+    }
+
+    // Reset modal state
+    resetRatingModal();
+
+    // Show celebration, hide other sections
+    const celebration = document.getElementById('arrival-celebration');
+    const authGate = document.getElementById('rating-auth-gate');
+    const ratingForm = document.getElementById('rating-form');
+    const ratingSuccess = document.getElementById('rating-success');
+    const modalTitle = document.getElementById('rating-modal-title');
+
+    if (celebration) celebration.style.display = 'block';
+    if (authGate) authGate.style.display = 'none';
+    if (ratingForm) ratingForm.style.display = 'none';
+    if (ratingSuccess) ratingSuccess.style.display = 'none';
+    if (modalTitle) modalTitle.textContent = "You've Arrived!";
+
+    openModal('route-rating-modal');
+}
+
+/**
+ * Show the rating form (after celebration or directly)
+ */
+function showRatingForm() {
+    console.log('[PinkPath] Showing rating form...');
+
+    const { isLoggedIn } = getAuthState();
+    const celebration = document.getElementById('arrival-celebration');
+    const authGate = document.getElementById('rating-auth-gate');
+    const ratingForm = document.getElementById('rating-form');
+    const ratingSuccess = document.getElementById('rating-success');
+    const modalTitle = document.getElementById('rating-modal-title');
+
+    if (celebration) celebration.style.display = 'none';
+    if (ratingSuccess) ratingSuccess.style.display = 'none';
+    if (modalTitle) modalTitle.textContent = 'Rate Your Route';
+
+    if (isLoggedIn) {
+        if (authGate) authGate.style.display = 'none';
+        if (ratingForm) ratingForm.style.display = 'block';
+    } else {
+        if (authGate) authGate.style.display = 'block';
+        if (ratingForm) ratingForm.style.display = 'none';
+    }
+}
+
+/**
+ * Show the route rating modal (legacy - now shows celebration first)
  * Sets up rating context and displays appropriate view based on auth state
  */
 function showRatingModal() {
@@ -1957,10 +2047,12 @@ function showRatingModal() {
 
     // Check auth state and show appropriate view
     const { isLoggedIn } = getAuthState();
+    const celebration = document.getElementById('arrival-celebration');
     const authGate = document.getElementById('rating-auth-gate');
     const ratingForm = document.getElementById('rating-form');
     const ratingSuccess = document.getElementById('rating-success');
 
+    if (celebration) celebration.style.display = 'none';
     if (authGate) authGate.style.display = isLoggedIn ? 'none' : 'block';
     if (ratingForm) ratingForm.style.display = isLoggedIn ? 'block' : 'none';
     if (ratingSuccess) ratingSuccess.style.display = 'none';
@@ -1972,10 +2064,17 @@ function showRatingModal() {
  * Reset rating modal to initial state
  */
 function resetRatingModal() {
-    // Clear selected rating
-    document.querySelectorAll('.rating-option').forEach(opt => {
-        opt.classList.remove('selected');
+    // Clear star selection
+    document.querySelectorAll('.star-btn').forEach(btn => {
+        btn.classList.remove('filled', 'active');
     });
+
+    // Reset star rating label
+    const starLabel = document.getElementById('star-rating-label');
+    if (starLabel) {
+        starLabel.textContent = 'Tap to rate';
+        starLabel.removeAttribute('data-rating');
+    }
 
     // Hide reasons section
     const reasonsSection = document.getElementById('rating-reasons');
@@ -1996,11 +2095,82 @@ function resetRatingModal() {
 
     // Reset selected rating state
     window._selectedRating = null;
+    window._selectedStarRating = null;
     window._selectedReasons = [];
 }
 
 /**
- * Handle rating option selection
+ * Handle star rating selection
+ */
+function handleStarRating(starBtn) {
+    const rating = parseInt(starBtn.dataset.rating);
+    console.log('[Rating] Star rating:', rating);
+
+    // Update visual - fill stars up to selected
+    document.querySelectorAll('.star-btn').forEach(btn => {
+        const btnRating = parseInt(btn.dataset.rating);
+        btn.classList.toggle('filled', btnRating <= rating);
+        btn.classList.remove('active');
+    });
+    starBtn.classList.add('active');
+
+    // Store selected rating
+    window._selectedStarRating = rating;
+
+    // Map star rating to safe/unsafe/neutral for reason chips
+    let ratingType;
+    if (rating <= 2) {
+        ratingType = 'unsafe';
+    } else if (rating === 3) {
+        ratingType = 'neutral';
+    } else {
+        ratingType = 'safe';
+    }
+    window._selectedRating = ratingType;
+    window._selectedReasons = [];
+
+    // Update label
+    const labels = {
+        1: 'Very Unsafe',
+        2: 'Felt Unsafe',
+        3: 'Neutral',
+        4: 'Felt Safe',
+        5: 'Very Safe'
+    };
+    const starLabel = document.getElementById('star-rating-label');
+    if (starLabel) {
+        starLabel.textContent = labels[rating];
+        starLabel.setAttribute('data-rating', rating);
+    }
+
+    // Show reason chips
+    showReasonChips(ratingType);
+
+    // Enable submit button
+    const submitBtn = document.getElementById('submit-rating-btn');
+    if (submitBtn) submitBtn.disabled = false;
+}
+
+/**
+ * Handle star hover effect
+ */
+function handleStarHover(starBtn, isHovering) {
+    if (window._selectedStarRating) return; // Don't change if already selected
+
+    const rating = parseInt(starBtn.dataset.rating);
+
+    document.querySelectorAll('.star-btn').forEach(btn => {
+        const btnRating = parseInt(btn.dataset.rating);
+        if (isHovering) {
+            btn.classList.toggle('filled', btnRating <= rating);
+        } else {
+            btn.classList.remove('filled');
+        }
+    });
+}
+
+/**
+ * Handle rating option selection (legacy 3-level - kept for compatibility)
  */
 function handleRatingSelection(option) {
     const rating = option.dataset.rating;
@@ -2077,7 +2247,7 @@ function updateCommentCharCount() {
  * Handle rating submission
  */
 async function handleRatingSubmit() {
-    if (!window._selectedRating) {
+    if (!window._selectedRating && !window._selectedStarRating) {
         console.log('[Rating] No rating selected');
         return;
     }
@@ -2092,6 +2262,7 @@ async function handleRatingSubmit() {
 
     const ratingData = {
         rating: window._selectedRating,
+        starRating: window._selectedStarRating || null,
         reasons: window._selectedReasons || [],
         comment: commentInput?.value || null,
     };
@@ -2385,6 +2556,347 @@ function addPinMarkerToMap(pinData) {
     });
 }
 
+// ========================================
+// HAZARD REPORTING MODAL
+// ========================================
+
+// Report modal state
+let reportModalMapListener = null;
+let selectedReportLocation = null;
+let selectedHazardTypes = [];
+let currentReportScope = 'spot';
+
+/**
+ * Open the hazard report modal
+ */
+function openReportModal() {
+    console.log('[Report] Opening report modal...');
+
+    const modal = document.getElementById('report-hazard-modal');
+    if (!modal) return;
+
+    // Check auth state
+    const authGate = document.getElementById('report-auth-gate');
+    const reportForm = document.getElementById('report-form');
+    const reportSuccess = document.getElementById('report-success');
+
+    if (canSubmitReport()) {
+        authGate.style.display = 'none';
+        reportForm.style.display = 'block';
+        reportSuccess.style.display = 'none';
+
+        // Set report context from current route
+        if (currentRoute) {
+            setReportContext({
+                startLat: currentRoute.startLat || currentRoute.legs?.[0]?.start_location?.lat(),
+                startLng: currentRoute.startLng || currentRoute.legs?.[0]?.start_location?.lng(),
+                endLat: currentRoute.endLat || currentRoute.legs?.[0]?.end_location?.lat(),
+                endLng: currentRoute.endLng || currentRoute.legs?.[0]?.end_location?.lng(),
+                polyline: currentRoute.polyline || currentRoute.overview_polyline?.points,
+                wasPreviewMode: isPreviewMode,
+            });
+        }
+
+        populateHazardTypes();
+        resetReportModal();
+    } else {
+        authGate.style.display = 'block';
+        reportForm.style.display = 'none';
+        reportSuccess.style.display = 'none';
+    }
+
+    openModal('report-hazard-modal');
+
+    // Enable map click for spot reports if on route map
+    if (routeMap && currentReportScope === 'spot') {
+        reportModalMapListener = routeMap.addListener('click', handleMapClickForReport);
+    }
+}
+
+/**
+ * Close the hazard report modal
+ */
+function closeReportModal() {
+    closeModal('report-hazard-modal');
+
+    // Remove map click listener
+    if (reportModalMapListener) {
+        google.maps.event.removeListener(reportModalMapListener);
+        reportModalMapListener = null;
+    }
+
+    resetReportModal();
+}
+
+/**
+ * Reset report modal state
+ */
+function resetReportModal() {
+    selectedReportLocation = null;
+    selectedHazardTypes = [];
+    currentReportScope = 'spot';
+
+    // Reset scope selection
+    const spotRadio = document.querySelector('input[name="report-scope"][value="spot"]');
+    if (spotRadio) spotRadio.checked = true;
+
+    // Show spot location section
+    const spotSection = document.getElementById('spot-location-section');
+    if (spotSection) spotSection.style.display = 'block';
+
+    // Hide location preview
+    const locationPreview = document.getElementById('report-location-preview');
+    if (locationPreview) locationPreview.style.display = 'none';
+
+    // Reset hazard type checkboxes
+    document.querySelectorAll('.hazard-type-option input').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+
+    // Reset severity to medium
+    const mediumSeverity = document.querySelector('input[name="report-severity"][value="medium"]');
+    if (mediumSeverity) mediumSeverity.checked = true;
+
+    // Clear comment
+    const commentInput = document.getElementById('report-comment-input');
+    if (commentInput) commentInput.value = '';
+    updateReportCommentCharCount();
+
+    // Disable submit button
+    const submitBtn = document.getElementById('submit-report-btn');
+    if (submitBtn) submitBtn.disabled = true;
+}
+
+/**
+ * Populate hazard type checkboxes
+ */
+function populateHazardTypes() {
+    const grid = document.getElementById('hazard-types-grid');
+    if (!grid) return;
+
+    const categories = getHazardCategories();
+
+    grid.innerHTML = '';
+
+    categories.forEach(cat => {
+        const label = document.createElement('label');
+        label.className = 'hazard-type-option';
+
+        label.innerHTML = `
+            <input type="checkbox" value="${cat.code}" data-severity="${cat.severity_default}">
+            <span class="hazard-type-content">
+                <span class="hazard-type-icon">${cat.icon || '⚠️'}</span>
+                <span class="hazard-type-label">${cat.label}</span>
+            </span>
+        `;
+
+        const checkbox = label.querySelector('input');
+        checkbox.addEventListener('change', () => handleHazardTypeChange(checkbox));
+
+        grid.appendChild(label);
+    });
+}
+
+/**
+ * Handle hazard type checkbox change
+ */
+function handleHazardTypeChange(checkbox) {
+    if (checkbox.checked) {
+        selectedHazardTypes.push(checkbox.value);
+    } else {
+        selectedHazardTypes = selectedHazardTypes.filter(t => t !== checkbox.value);
+    }
+
+    updateReportSubmitButton();
+}
+
+/**
+ * Handle report scope change (spot vs route)
+ */
+function handleReportScopeChange(event) {
+    currentReportScope = event.target.value;
+
+    const spotSection = document.getElementById('spot-location-section');
+
+    if (currentReportScope === 'spot') {
+        if (spotSection) spotSection.style.display = 'block';
+
+        // Enable map click
+        if (routeMap && !reportModalMapListener) {
+            reportModalMapListener = routeMap.addListener('click', handleMapClickForReport);
+        }
+    } else {
+        if (spotSection) spotSection.style.display = 'none';
+
+        // Remove map click listener
+        if (reportModalMapListener) {
+            google.maps.event.removeListener(reportModalMapListener);
+            reportModalMapListener = null;
+        }
+    }
+
+    updateReportSubmitButton();
+}
+
+/**
+ * Handle map click for report location selection
+ */
+function handleMapClickForReport(event) {
+    selectedReportLocation = {
+        lat: event.latLng.lat(),
+        lng: event.latLng.lng(),
+    };
+
+    console.log('[Report] Location selected:', selectedReportLocation);
+
+    const locationPreview = document.getElementById('report-location-preview');
+    const coordsDisplay = document.getElementById('report-location-coords');
+
+    if (locationPreview) locationPreview.style.display = 'flex';
+    if (coordsDisplay) {
+        coordsDisplay.textContent = `${selectedReportLocation.lat.toFixed(5)}, ${selectedReportLocation.lng.toFixed(5)}`;
+    }
+
+    updateReportSubmitButton();
+}
+
+/**
+ * Clear selected report location
+ */
+function clearReportLocation() {
+    selectedReportLocation = null;
+
+    const locationPreview = document.getElementById('report-location-preview');
+    if (locationPreview) locationPreview.style.display = 'none';
+
+    updateReportSubmitButton();
+}
+
+/**
+ * Update report comment character count
+ */
+function updateReportCommentCharCount() {
+    const input = document.getElementById('report-comment-input');
+    const counter = document.getElementById('report-char-count');
+
+    if (input && counter) {
+        counter.textContent = input.value.length;
+    }
+}
+
+/**
+ * Update report submit button state
+ */
+function updateReportSubmitButton() {
+    const submitBtn = document.getElementById('submit-report-btn');
+    if (!submitBtn) return;
+
+    let canSubmit = selectedHazardTypes.length > 0;
+
+    // For spot reports, also require location
+    if (currentReportScope === 'spot' && !selectedReportLocation) {
+        canSubmit = false;
+    }
+
+    // For route reports, require report context
+    if (currentReportScope === 'route' && !getReportContext()) {
+        canSubmit = false;
+    }
+
+    submitBtn.disabled = !canSubmit;
+}
+
+/**
+ * Handle report submission
+ */
+async function handleReportSubmit() {
+    if (selectedHazardTypes.length === 0) {
+        console.log('[Report] No hazard types selected');
+        return;
+    }
+
+    const submitBtn = document.getElementById('submit-report-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+    }
+
+    const severity = document.querySelector('input[name="report-severity"]:checked')?.value || 'medium';
+    const comment = document.getElementById('report-comment-input')?.value || '';
+
+    const reportData = {
+        reportScope: currentReportScope,
+        hazardTypes: selectedHazardTypes,
+        severity: severity,
+        comment: comment,
+    };
+
+    // Add location for spot reports
+    if (currentReportScope === 'spot') {
+        reportData.location = selectedReportLocation;
+    }
+
+    console.log('[Report] Submitting:', reportData);
+
+    const result = await submitHazardReport(reportData);
+
+    if (result.success) {
+        console.log('[Report] Submitted successfully:', result.reportId);
+
+        // Show success state
+        const reportForm = document.getElementById('report-form');
+        const reportSuccess = document.getElementById('report-success');
+
+        if (reportForm) reportForm.style.display = 'none';
+        if (reportSuccess) reportSuccess.style.display = 'block';
+
+        // Add visual marker to map for spot reports
+        if (currentReportScope === 'spot' && selectedReportLocation) {
+            addHazardMarkerToMap(selectedReportLocation, selectedHazardTypes);
+        }
+    } else {
+        console.error('[Report] Submission failed:', result.error);
+        alert('Failed to submit report: ' + result.error);
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Report';
+    }
+}
+
+/**
+ * Add a visual marker for a submitted hazard report
+ */
+function addHazardMarkerToMap(location, hazardTypes) {
+    const mapToUse = routeMap || navigationMap;
+    if (!mapToUse) return;
+
+    const markerContent = document.createElement('div');
+    markerContent.style.cssText = `
+        width: 28px;
+        height: 28px;
+        background: #dc143c;
+        border-radius: 50%;
+        border: 3px solid white;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        color: white;
+        font-weight: bold;
+    `;
+    markerContent.innerHTML = '!';
+
+    new google.maps.marker.AdvancedMarkerElement({
+        map: mapToUse,
+        position: { lat: location.lat, lng: location.lng },
+        content: markerContent,
+        title: hazardTypes.join(', '),
+    });
+}
+
 /**
  * Update preview mode button visibility
  */
@@ -2469,11 +2981,22 @@ async function handleCheckIn() {
 }
 
 async function handleArrived() {
+    console.log('[Navigation] User tapped I Arrived button');
+
+    // Stop GPS tracking
+    if (navigationWatchId) {
+        navigator.geolocation.clearWatch(navigationWatchId);
+        navigationWatchId = null;
+    }
+
+    isNavigating = false;
+    updateNavigationStatus('ARRIVED', true);
+
     // End trip as arrived
     await endTrip('arrived');
 
-    // End navigation
-    endNavigation();
+    // Show arrival celebration modal
+    showArrivalCelebration();
 }
 
 /**
@@ -3573,6 +4096,20 @@ document.addEventListener('DOMContentLoaded', function() {
         goToScreen('screen-auth');
     });
 
+    // Arrival celebration buttons
+    wireButton('rate-route-btn', showRatingForm);
+    wireButton('skip-rating-btn', () => {
+        closeRatingModal();
+        goToScreen('screen-route-results');
+    });
+
+    // 5-star rating buttons
+    document.querySelectorAll('.star-btn').forEach(starBtn => {
+        starBtn.addEventListener('click', () => handleStarRating(starBtn));
+        starBtn.addEventListener('mouseenter', () => handleStarHover(starBtn, true));
+        starBtn.addEventListener('mouseleave', () => handleStarHover(starBtn, false));
+    });
+
     // Rating option selection
     document.querySelectorAll('.rating-option').forEach(option => {
         option.addEventListener('click', () => handleRatingSelection(option));
@@ -3603,6 +4140,38 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Preview mode rate route button
     wireButton('rate-route-preview-btn', showRatingModal);
+
+    // ========================================
+    // HAZARD REPORTING MODAL
+    // ========================================
+    console.log('[Init] Setting up hazard reporting modal...');
+    wireModalBackdrop('report-hazard-modal');
+    wireButton('report-hazard-btn', openReportModal);
+    wireButton('report-modal-close-btn', closeReportModal);
+    wireButton('report-sign-in-btn', () => {
+        closeReportModal();
+        goToScreen('screen-auth');
+    });
+    wireButton('report-skip-btn', closeReportModal);
+    wireButton('clear-report-location-btn', clearReportLocation);
+    wireButton('submit-report-btn', handleReportSubmit);
+    wireButton('report-done-btn', closeReportModal);
+
+    // Report scope radio buttons
+    document.querySelectorAll('input[name="report-scope"]').forEach(radio => {
+        radio.addEventListener('change', handleReportScopeChange);
+    });
+
+    // Report comment character counter
+    const reportCommentInput = document.getElementById('report-comment-input');
+    if (reportCommentInput) {
+        reportCommentInput.addEventListener('input', updateReportCommentCharCount);
+    }
+
+    // Load hazard categories on startup
+    loadHazardCategories().then(() => {
+        console.log('[Init] Hazard categories loaded');
+    });
 
     // ========================================
     // WELCOME TUTORIAL

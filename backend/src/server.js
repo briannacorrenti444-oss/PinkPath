@@ -29,6 +29,7 @@ import safetyRoutes from './routes/safety.js';
 import ratingsRoutes from './routes/ratings.js';
 import tripRoutes from './routes/trips.js';
 import feedbackRoutes from './routes/feedback.js';
+import reportingRoutes from './routes/reporting.js';
 
 // Import database
 import { initializeDatabase, closeDatabase } from './db/connection.js';
@@ -262,6 +263,7 @@ server.get('/api', async (request, reply) => {
       ratings: '/api/ratings/*',
       trips: '/api/trips/*',
       feedback: '/api/feedback/*',
+      reports: '/api/reports/*',
     },
   };
 });
@@ -280,6 +282,7 @@ await server.register(safetyRoutes, { prefix: '/api/safety' });
 await server.register(ratingsRoutes, { prefix: '/api/ratings' });
 await server.register(tripRoutes, { prefix: '/api/trips' });
 await server.register(feedbackRoutes, { prefix: '/api/feedback' });
+await server.register(reportingRoutes, { prefix: '/api/reports' });
 
 // ==============================================
 // ERROR HANDLING

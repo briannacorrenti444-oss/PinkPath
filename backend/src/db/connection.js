@@ -172,6 +172,10 @@ async function initializeSchema(client) {
   // BETA: Feature votes for prioritizing development
   await createFeatureVotesTable(client);
 
+  // Hazard reporting system
+  await createHazardCategoriesTable(client);
+  await createHazardReportsTable(client);
+
   console.log('[DB] Schema initialization complete');
 }
 
@@ -389,6 +393,7 @@ async function createRouteRatingsTable(client) {
       end_lng DECIMAL(10, 7) NOT NULL,
       polyline TEXT,
       rating VARCHAR(10) NOT NULL CHECK (rating IN ('unsafe', 'neutral', 'safe')),
+      star_rating INTEGER CHECK (star_rating >= 1 AND star_rating <= 5),
       reasons JSONB DEFAULT '[]',
       comment TEXT,
       was_preview_mode BOOLEAN DEFAULT false,
@@ -396,9 +401,13 @@ async function createRouteRatingsTable(client) {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Add star_rating column if it doesn't exist (for existing databases)
+    ALTER TABLE route_ratings ADD COLUMN IF NOT EXISTS star_rating INTEGER CHECK (star_rating >= 1 AND star_rating <= 5);
+
     CREATE INDEX IF NOT EXISTS idx_route_ratings_user_id ON route_ratings(user_id);
     CREATE INDEX IF NOT EXISTS idx_route_ratings_created ON route_ratings(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_route_ratings_rating ON route_ratings(rating);
+    CREATE INDEX IF NOT EXISTS idx_route_ratings_star ON route_ratings(star_rating);
     CREATE INDEX IF NOT EXISTS idx_route_ratings_location ON route_ratings(start_lat, start_lng, end_lat, end_lng);
   `);
 }
@@ -542,6 +551,88 @@ async function createFeatureVotesTable(client) {
 
     CREATE INDEX IF NOT EXISTS idx_feature_votes_feature ON feature_votes(feature_key);
     CREATE INDEX IF NOT EXISTS idx_feature_votes_created ON feature_votes(created_at DESC);
+  `);
+}
+
+/**
+ * Create hazard categories reference table
+ */
+async function createHazardCategoriesTable(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS hazard_categories (
+      id SERIAL PRIMARY KEY,
+      code VARCHAR(50) UNIQUE NOT NULL,
+      label VARCHAR(100) NOT NULL,
+      icon VARCHAR(10),
+      severity_default VARCHAR(10) DEFAULT 'medium' CHECK (severity_default IN ('low', 'medium', 'high')),
+      is_active BOOLEAN DEFAULT true,
+      display_order INTEGER DEFAULT 0
+    );
+
+    -- Seed default hazard categories if table is empty
+    INSERT INTO hazard_categories (code, label, icon, severity_default, display_order)
+    SELECT * FROM (VALUES
+      ('poor_lighting', 'Poor/No Lighting', '💡', 'medium', 1),
+      ('broken_sidewalk', 'Broken Sidewalk', '🚧', 'low', 2),
+      ('construction', 'Construction Zone', '🔨', 'low', 3),
+      ('encampment', 'Encampment', '🏕️', 'medium', 4),
+      ('suspicious_activity', 'Suspicious Activity', '👁️', 'high', 5),
+      ('harassment', 'Harassment/Catcalling', '🚨', 'high', 6),
+      ('no_sidewalk', 'No Sidewalk', '🚶', 'medium', 7),
+      ('heavy_traffic', 'Heavy Traffic', '🚗', 'medium', 8),
+      ('isolated_area', 'Isolated/Deserted', '🏚️', 'high', 9),
+      ('obstructed_path', 'Obstructed Path', '⛔', 'low', 10),
+      ('poor_visibility', 'Poor Visibility', '🌫️', 'medium', 11),
+      ('aggressive_dogs', 'Aggressive Animals', '🐕', 'medium', 12)
+    ) AS v(code, label, icon, severity_default, display_order)
+    WHERE NOT EXISTS (SELECT 1 FROM hazard_categories LIMIT 1)
+    ON CONFLICT (code) DO NOTHING;
+  `);
+}
+
+/**
+ * Create hazard reports table
+ * Supports both spot reports (single location) and route-wide reports
+ */
+async function createHazardReportsTable(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS hazard_reports (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      report_scope VARCHAR(10) NOT NULL CHECK (report_scope IN ('spot', 'route')),
+
+      -- For spot reports: specific location
+      lat DECIMAL(10, 7),
+      lng DECIMAL(10, 7),
+
+      -- For route reports: route bounds
+      start_lat DECIMAL(10, 7),
+      start_lng DECIMAL(10, 7),
+      end_lat DECIMAL(10, 7),
+      end_lng DECIMAL(10, 7),
+      polyline TEXT,
+
+      -- Hazard details (JSONB array allows multiple selections)
+      hazard_types JSONB NOT NULL DEFAULT '[]',
+      severity VARCHAR(10) NOT NULL DEFAULT 'medium' CHECK (severity IN ('low', 'medium', 'high')),
+      comment TEXT,
+
+      -- Metadata
+      time_of_day VARCHAR(20),
+      was_preview_mode BOOLEAN DEFAULT false,
+      is_active BOOLEAN DEFAULT true,
+      resolved_at TIMESTAMP WITH TIME ZONE,
+
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hazard_reports_user ON hazard_reports(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hazard_reports_location ON hazard_reports(lat, lng) WHERE report_scope = 'spot';
+    CREATE INDEX IF NOT EXISTS idx_hazard_reports_scope ON hazard_reports(report_scope);
+    CREATE INDEX IF NOT EXISTS idx_hazard_reports_active ON hazard_reports(is_active) WHERE is_active = true;
+    CREATE INDEX IF NOT EXISTS idx_hazard_reports_created ON hazard_reports(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_hazard_reports_severity ON hazard_reports(severity);
   `);
 }
 

@@ -72,6 +72,7 @@ export default async function ratingsRoutes(fastify) {
         required: ['rating', 'startLat', 'startLng', 'endLat', 'endLng'],
         properties: {
           rating: { type: 'string', enum: ['unsafe', 'neutral', 'safe'] },
+          starRating: { type: 'integer', minimum: 1, maximum: 5 },
           reasons: { type: 'array', items: { type: 'string' }, maxItems: 10 },
           comment: { type: 'string', maxLength: 500 },
           routeHistoryId: { type: 'integer' },
@@ -87,6 +88,7 @@ export default async function ratingsRoutes(fastify) {
   }, async (request, reply) => {
     const {
       rating,
+      starRating,
       reasons,
       comment,
       routeHistoryId,
@@ -108,14 +110,15 @@ export default async function ratingsRoutes(fastify) {
 
       const result = await query(
         `INSERT INTO route_ratings
-         (user_id, route_history_id, rating, reasons, comment, polyline,
+         (user_id, route_history_id, rating, star_rating, reasons, comment, polyline,
           start_lat, start_lng, end_lat, end_lng, was_preview_mode, time_of_day)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING id, created_at`,
         [
           request.user.id,
           routeHistoryId || null,
           rating,
+          starRating || null,
           JSON.stringify(reasons || []),
           sanitizedComment,
           polyline || null,
