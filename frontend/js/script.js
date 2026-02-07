@@ -134,61 +134,6 @@ import {
 console.log('[PinkPath] All imports loaded successfully');
 
 // ========================================
-// MAP THEME TOGGLE (Dark Map Mode)
-// ========================================
-
-const MAP_THEME_STORAGE_KEY = 'pinkpath_map_theme';
-
-/**
- * Initialize map theme from localStorage
- * Updates the global currentMode variable
- */
-function initMapTheme() {
-    const savedTheme = localStorage.getItem(MAP_THEME_STORAGE_KEY);
-    if (savedTheme === 'dark' || savedTheme === 'light') {
-        currentMode = savedTheme;
-    }
-    console.log('[MapTheme] Initialized:', currentMode);
-}
-
-/**
- * Toggle between light and dark map styles
- */
-function toggleMapTheme() {
-    currentMode = currentMode === 'dark' ? 'light' : 'dark';
-    localStorage.setItem(MAP_THEME_STORAGE_KEY, currentMode);
-
-    console.log('[MapTheme] Toggled to:', currentMode);
-
-    // Update toggle button appearance
-    const toggleBtn = document.getElementById('theme-toggle-btn');
-    if (toggleBtn) {
-        toggleBtn.classList.toggle('map-dark', currentMode === 'dark');
-    }
-
-    // Update map styles
-    updateMapTheme(currentMode === 'dark');
-}
-
-/**
- * Update all maps to match current theme
- * @param {boolean} isDark - Whether dark mode is active
- */
-function updateMapTheme(isDark) {
-    const mode = isDark ? 'dark' : 'light';
-
-    // Update route map
-    if (typeof routeMap !== 'undefined' && routeMap) {
-        setMapStyle(routeMap, mode);
-    }
-
-    // Update navigation map
-    if (typeof navigationMap !== 'undefined' && navigationMap) {
-        setMapStyle(navigationMap, mode);
-    }
-}
-
-// ========================================
 // UTILITY FUNCTIONS
 // ========================================
 
@@ -4368,15 +4313,6 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('[Init] Offline handling initialized');
 
     // ========================================
-    // MAP THEME TOGGLE INITIALIZATION
-    // ========================================
-    initMapTheme();
-    const themeToggleBtn = document.getElementById('theme-toggle-btn');
-    if (themeToggleBtn && currentMode === 'dark') {
-        themeToggleBtn.classList.add('map-dark');
-    }
-
-    // ========================================
     // SESSION EXPIRATION HANDLING
     // ========================================
     window.addEventListener('auth-expired', handleSessionExpired);
@@ -4450,7 +4386,6 @@ document.addEventListener('DOMContentLoaded', function() {
     wireButton('nav-plan-route-btn', () => goToScreen('screen-plan-route'));
     wireButton('nav-features-btn', scrollToFeatures);
     wireButton('nav-signin-btn', () => goToScreen('screen-auth'));
-    wireButton('theme-toggle-btn', toggleMapTheme);
 
     // ========================================
     // MOBILE MENU

@@ -32,36 +32,6 @@
     --transition: all 0.3s ease;
 }
 
-/* Map theme toggle button */
-.theme-toggle {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 8px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--gray-dark);
-    transition: var(--transition);
-}
-
-.theme-toggle:hover {
-    background: rgba(255, 20, 147, 0.1);
-}
-
-.theme-toggle .icon-sun {
-    display: none;
-}
-
-.theme-toggle.map-dark .icon-sun {
-    display: block;
-}
-
-.theme-toggle.map-dark .icon-moon {
-    display: none;
-}
-
 /* === RESET & BASE === */
 * {
     margin: 0;

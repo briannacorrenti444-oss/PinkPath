@@ -3,7 +3,7 @@
 // Reusable route planning form widget
 // ========================================
 
-import { setupAutocomplete, setupPasteHandler } from '../controllers/searchController.js';
+import { setupAutocomplete, setupPasteHandler, markLocationSelected } from '../controllers/searchController.js';
 
 /**
  * RoutePlanner - A reusable route planning form component
