@@ -19,6 +19,7 @@
     "@fastify/passport": "^2.4.0",
     "@fastify/rate-limit": "^9.1.0",
     "@fastify/secure-session": "^7.1.0",
+    "@sentry/node": "^10.38.0",
     "bcrypt": "^5.1.1",
     "dotenv": "^16.4.1",
     "fastify": "^4.26.0",

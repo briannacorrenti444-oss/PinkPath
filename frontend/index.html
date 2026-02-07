@@ -6,6 +6,34 @@
     <title>PinkPath - Navigate Safely, Always</title>
     <link rel="stylesheet" href="/styles.css?v=7">
 
+    <!-- Sentry Error Tracking (load first to catch all errors) -->
+    <script
+        src="https://js.sentry-cdn.com/89e4128a01870eefba6c3c676b07353e.min.js"
+        crossorigin="anonymous"
+    ></script>
+    <script>
+        // Initialize Sentry for error tracking
+        if (window.Sentry) {
+            Sentry.init({
+                dsn: "https://89e4128a01870eefba6c3c676b07353e@o4510842072924160.ingest.us.sentry.io/4510842082099200",
+                environment: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                    ? 'development'
+                    : 'production',
+                // Sample 20% of transactions for performance monitoring
+                tracesSampleRate: 0.2,
+                // Only send errors in production, all in development
+                beforeSend(event) {
+                    // Don't send events in development unless it's a real error
+                    if (event.environment === 'development' && !event.exception) {
+                        return null;
+                    }
+                    return event;
+                },
+            });
+            console.log('[Sentry] Error tracking initialized');
+        }
+    </script>
+
     <!-- Google Maps JavaScript API -->
     <!--
     SECURITY NOTE: The Google Maps API key below should be:

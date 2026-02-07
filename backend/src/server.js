@@ -13,6 +13,7 @@ import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import helmet from '@fastify/helmet';
 import dotenv from 'dotenv';
+import * as Sentry from '@sentry/node';
 
 // Load environment variables
 // In Docker: env vars come from docker-compose
@@ -75,6 +76,25 @@ function validateEnvironment() {
 }
 
 validateEnvironment();
+
+// ==============================================
+// SENTRY ERROR TRACKING
+// ==============================================
+
+/**
+ * Initialize Sentry for error tracking
+ * Only enabled in production or when explicitly configured
+ */
+if (process.env.SENTRY_DSN || !isDev) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN || 'https://89e4128a01870eefba6c3c676b07353e@o4510842072924160.ingest.us.sentry.io/4510842082099200',
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: 0.2,
+    // Don't send PII
+    sendDefaultPii: false,
+  });
+  console.log('[Sentry] Error tracking initialized');
+}
 
 // ==============================================
 // SERVER CONFIGURATION
@@ -302,6 +322,17 @@ await server.register(reportingRoutes, { prefix: '/api/reports' });
  */
 server.setErrorHandler(function (error, request, reply) {
   server.log.error(error);
+
+  // Report to Sentry (skip expected errors like rate limits and validation)
+  if (!error.statusCode || error.statusCode >= 500) {
+    Sentry.captureException(error, {
+      extra: {
+        url: request.url,
+        method: request.method,
+        userId: request.user?.id,
+      },
+    });
+  }
 
   // Handle rate limit errors
   if (error.statusCode === 429) {
