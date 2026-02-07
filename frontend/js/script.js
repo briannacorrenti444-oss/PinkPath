@@ -134,42 +134,40 @@ import {
 console.log('[PinkPath] All imports loaded successfully');
 
 // ========================================
-// THEME MANAGER (Dark Mode)
+// MAP THEME TOGGLE (Dark Map Mode)
 // ========================================
 
-const THEME_STORAGE_KEY = 'pinkpath_theme';
+const MAP_THEME_STORAGE_KEY = 'pinkpath_map_theme';
 
 /**
- * Initialize theme from localStorage or system preference
+ * Initialize map theme from localStorage
+ * Updates the global currentMode variable
  */
-function initTheme() {
-    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-
-    if (savedTheme === 'dark') {
-        document.body.classList.add('dark');
-    } else if (savedTheme === 'light') {
-        document.body.classList.remove('dark');
-    } else {
-        // No saved preference - check system preference
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            document.body.classList.add('dark');
-        }
+function initMapTheme() {
+    const savedTheme = localStorage.getItem(MAP_THEME_STORAGE_KEY);
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+        currentMode = savedTheme;
     }
-
-    console.log('[Theme] Initialized:', document.body.classList.contains('dark') ? 'dark' : 'light');
+    console.log('[MapTheme] Initialized:', currentMode);
 }
 
 /**
- * Toggle between light and dark themes
+ * Toggle between light and dark map styles
  */
-function toggleTheme() {
-    const isDark = document.body.classList.toggle('dark');
-    localStorage.setItem(THEME_STORAGE_KEY, isDark ? 'dark' : 'light');
+function toggleMapTheme() {
+    currentMode = currentMode === 'dark' ? 'light' : 'dark';
+    localStorage.setItem(MAP_THEME_STORAGE_KEY, currentMode);
 
-    console.log('[Theme] Toggled to:', isDark ? 'dark' : 'light');
+    console.log('[MapTheme] Toggled to:', currentMode);
 
-    // Update map styles if maps exist
-    updateMapTheme(isDark);
+    // Update toggle button appearance
+    const toggleBtn = document.getElementById('theme-toggle-btn');
+    if (toggleBtn) {
+        toggleBtn.classList.toggle('map-dark', currentMode === 'dark');
+    }
+
+    // Update map styles
+    updateMapTheme(currentMode === 'dark');
 }
 
 /**
@@ -189,17 +187,6 @@ function updateMapTheme(isDark) {
         setMapStyle(navigationMap, mode);
     }
 }
-
-/**
- * Get current theme
- * @returns {string} 'dark' or 'light'
- */
-function getCurrentTheme() {
-    return document.body.classList.contains('dark') ? 'dark' : 'light';
-}
-
-// Initialize theme immediately (before DOM ready) to prevent flash
-initTheme();
 
 // ========================================
 // UTILITY FUNCTIONS
@@ -881,8 +868,23 @@ async function initializeNavigationMap() {
  */
 async function calculateAndDisplayRoute(start, end) {
     console.log('🔍 Calculating route via backend API...');
-    console.log('From:', start.name);
-    console.log('To:', end.name);
+    console.log('From:', start?.name || start);
+    console.log('To:', end?.name || end);
+
+    // Validate that we have coordinates
+    if (!start || typeof start.lat !== 'number' || typeof start.lng !== 'number') {
+        console.error('❌ Invalid start location - missing coordinates');
+        showGlobalToast('Please select a starting point from the dropdown or use GPS.', 'error');
+        updateRouteLoadingState(false);
+        return;
+    }
+
+    if (!end || typeof end.lat !== 'number' || typeof end.lng !== 'number') {
+        console.error('❌ Invalid destination - missing coordinates');
+        showGlobalToast('Please select a destination from the dropdown.', 'error');
+        updateRouteLoadingState(false);
+        return;
+    }
 
     if (!routeMap) {
         console.error('❌ Map not initialized');
@@ -4366,6 +4368,15 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('[Init] Offline handling initialized');
 
     // ========================================
+    // MAP THEME TOGGLE INITIALIZATION
+    // ========================================
+    initMapTheme();
+    const themeToggleBtn = document.getElementById('theme-toggle-btn');
+    if (themeToggleBtn && currentMode === 'dark') {
+        themeToggleBtn.classList.add('map-dark');
+    }
+
+    // ========================================
     // SESSION EXPIRATION HANDLING
     // ========================================
     window.addEventListener('auth-expired', handleSessionExpired);
@@ -4439,7 +4450,7 @@ document.addEventListener('DOMContentLoaded', function() {
     wireButton('nav-plan-route-btn', () => goToScreen('screen-plan-route'));
     wireButton('nav-features-btn', scrollToFeatures);
     wireButton('nav-signin-btn', () => goToScreen('screen-auth'));
-    wireButton('theme-toggle-btn', toggleTheme);
+    wireButton('theme-toggle-btn', toggleMapTheme);
 
     // ========================================
     // MOBILE MENU

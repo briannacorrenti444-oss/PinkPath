@@ -289,8 +289,8 @@ export async function geocodeAddress(address) {
 }
 
 /**
- * Set up paste handler for autocomplete inputs
- * Detects when user pastes text and attempts to geocode it
+ * Set up input handler for autocomplete inputs
+ * Geocodes typed/pasted addresses after user stops typing
  *
  * @param {string} inputId - The ID of the autocomplete input
  * @param {Function} onLocationSelected - Called with location object when geocoding succeeds
@@ -304,58 +304,66 @@ export function setupPasteHandler(inputId, onLocationSelected) {
     }
 
     const { wrapper, element } = instance;
-    const target = wrapper || element;
+
+    // Find the actual input element (may be in shadow DOM)
+    let input = null;
+
+    // Try to access shadow root
+    if (element && element.shadowRoot) {
+        input = element.shadowRoot.querySelector('input');
+    }
+
+    // Fallback to regular query
+    if (!input && wrapper) {
+        input = wrapper.querySelector('input');
+    }
+
+    if (!input) {
+        console.warn(`[searchController] Could not find input for: ${inputId}`);
+        // Retry after shadow DOM is ready
+        setTimeout(() => setupPasteHandler(inputId, onLocationSelected), 500);
+        return;
+    }
 
     // Debounce timer
     let debounceTimer = null;
+    let lastGeocodedValue = '';
 
-    // Listen for paste events on the wrapper (captures paste on shadow DOM input)
-    target.addEventListener('paste', async (event) => {
+    // Listen for input events (works for typing and pasting)
+    input.addEventListener('input', (event) => {
+        const value = event.target.value.trim();
+
         // Clear any pending debounce
         if (debounceTimer) {
             clearTimeout(debounceTimer);
         }
 
-        // Get pasted text
-        let pastedText = '';
-        if (event.clipboardData) {
-            pastedText = event.clipboardData.getData('text');
-        }
-
-        if (!pastedText || pastedText.length < 10) {
-            // Too short, probably not a full address
+        // Skip if too short or same as last geocoded
+        if (value.length < 10 || value === lastGeocodedValue) {
             return;
         }
 
-        console.log('[searchController] Paste detected:', pastedText.substring(0, 50) + '...');
-
-        // Debounce to let user finish pasting
+        // Debounce to wait for user to stop typing
         debounceTimer = setTimeout(async () => {
-            // Show loading state if possible
-            target.style.opacity = '0.7';
+            console.log('[searchController] Input detected, geocoding:', value.substring(0, 50) + '...');
 
-            const location = await geocodeAddress(pastedText);
-
-            // Reset loading state
-            target.style.opacity = '1';
+            const location = await geocodeAddress(value);
 
             if (location) {
-                console.log('[searchController] Paste geocoded successfully');
+                lastGeocodedValue = value;
+                console.log('[searchController] Input geocoded successfully');
                 onLocationSelected(location);
 
-                // Update the input value to show formatted address
-                const input = target.querySelector('input') ||
-                              (element && element.shadowRoot ? element.shadowRoot.querySelector('input') : null);
-                if (input) {
-                    input.value = location.formattedAddress || location.name;
+                // Update input to show formatted address
+                if (location.formattedAddress && location.formattedAddress !== value) {
+                    input.value = location.formattedAddress;
                 }
             } else {
-                console.log('[searchController] Could not geocode pasted address');
-                // Don't interrupt user - they can still use dropdown
+                console.log('[searchController] Could not geocode input - user can use dropdown');
             }
-        }, 500);
+        }, 1000); // 1 second debounce
     });
 
-    console.log(`[searchController] Paste handler set up for: ${inputId}`);
+    console.log(`[searchController] Input handler set up for: ${inputId}`);
 }
 
