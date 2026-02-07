@@ -37,12 +37,10 @@ import { reverseGeocode as googleReverseGeocode } from './modules/controllers/se
 import {
     createMap,
     showCurrentLocationOnMap,
-    addMapStyleToggle,
     createRouteMarkers,
     removeMarker,
     fitBoundsToPoints,
-    updateMarkerPosition,
-    setMapStyle
+    updateMarkerPosition
 } from './modules/controllers/mapController.js';
 
 // Import safety controller
@@ -256,13 +254,6 @@ let isRecalculating = false;            // Is route being recalculated? (prevent
 
 let currentStepIndex = 0;               // Current step in routeSteps array
 let navigationWatchId = null;           // GPS watchPosition ID (for cleanup)
-
-// ----------------------------------------
-// 5. UI STATE
-// Visual preferences
-// ----------------------------------------
-
-let currentMode = 'light';              // Map color mode: 'light' or 'dark'
 
 // ========================================
 // SESSION & ERROR HANDLING
@@ -731,14 +722,7 @@ async function initializeRouteMap() {
         routeMap = createMap(mapElement, {
             lat: defaultLocation.lat,
             lng: defaultLocation.lng,
-            zoom: 13,
-            mode: currentMode
-        });
-
-        // Add toggle button
-        addMapStyleToggle(routeMap, {
-            getMode: () => currentMode,
-            setMode: (m) => { currentMode = m; }
+            zoom: 13
         });
 
         // If we have selected locations, calculate route
@@ -783,14 +767,7 @@ async function initializeNavigationMap() {
         navigationMap = createMap(mapElement, {
             lat: defaultLocation.lat,
             lng: defaultLocation.lng,
-            zoom: 15,
-            mode: currentMode
-        });
-
-        // Add toggle button
-        addMapStyleToggle(navigationMap, {
-            getMode: () => currentMode,
-            setMode: (m) => { currentMode = m; }
+            zoom: 15
         });
 
         return true;

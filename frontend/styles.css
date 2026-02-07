@@ -2155,49 +2155,6 @@ END OF ALTERNATIVE ROUTES STYLES - DISABLED FOR BETA */
     margin: 8px !important;
 }
 
-/* Map Style Toggle Button */
-.map-style-toggle {
-    background: var(--white);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
-    margin-top: 10px;
-    margin-right: 10px;
-}
-
-.style-toggle-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--white);
-    border: none;
-    border-radius: var(--radius-md);
-    padding: 10px 16px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    transition: var(--transition);
-    font-family: inherit;
-}
-
-.style-toggle-btn:hover {
-    background-color: var(--gray-pale);
-}
-
-.toggle-option {
-    color: var(--gray-medium);
-    transition: var(--transition);
-    padding: 2px 4px;
-}
-
-.toggle-option.active {
-    color: var(--pink-primary);
-}
-
-.toggle-divider {
-    color: var(--gray-light);
-    font-weight: 300;
-}
-
 /* ============================================
    CURRENT LOCATION MARKER (PHASE 1)
    ============================================ */

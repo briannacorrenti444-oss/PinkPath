@@ -1,125 +1,29 @@
 // ========================================
 // MAP CONTROLLER - Google Maps Version
-// Handles map utilities: location markers, style toggle
+// Handles map utilities: location markers, route markers
 // ========================================
 
 /**
- * Google Maps style definitions for light and dark modes
- */
-export const MAP_STYLES = {
-    light: [
-        // Light mode - minimal styling, let default show through
-        {
-            featureType: 'poi',
-            elementType: 'labels',
-            stylers: [{ visibility: 'off' }]
-        }
-    ],
-    dark: [
-        { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
-        { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
-        { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
-        {
-            featureType: 'administrative.locality',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#d59563' }]
-        },
-        {
-            featureType: 'poi',
-            elementType: 'labels',
-            stylers: [{ visibility: 'off' }]
-        },
-        {
-            featureType: 'poi.park',
-            elementType: 'geometry',
-            stylers: [{ color: '#263c3f' }]
-        },
-        {
-            featureType: 'poi.park',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#6b9a76' }]
-        },
-        {
-            featureType: 'road',
-            elementType: 'geometry',
-            stylers: [{ color: '#38414e' }]
-        },
-        {
-            featureType: 'road',
-            elementType: 'geometry.stroke',
-            stylers: [{ color: '#212a37' }]
-        },
-        {
-            featureType: 'road',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#9ca5b3' }]
-        },
-        {
-            featureType: 'road.highway',
-            elementType: 'geometry',
-            stylers: [{ color: '#746855' }]
-        },
-        {
-            featureType: 'road.highway',
-            elementType: 'geometry.stroke',
-            stylers: [{ color: '#1f2835' }]
-        },
-        {
-            featureType: 'road.highway',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#f3d19c' }]
-        },
-        {
-            featureType: 'transit',
-            elementType: 'geometry',
-            stylers: [{ color: '#2f3948' }]
-        },
-        {
-            featureType: 'transit.station',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#d59563' }]
-        },
-        {
-            featureType: 'water',
-            elementType: 'geometry',
-            stylers: [{ color: '#17263c' }]
-        },
-        {
-            featureType: 'water',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#515c6d' }]
-        },
-        {
-            featureType: 'water',
-            elementType: 'labels.text.stroke',
-            stylers: [{ color: '#17263c' }]
-        }
-    ]
-};
-
-/**
  * Create a Google Maps instance
+ * Note: Map styling is controlled via Google Cloud Console when using mapId
  *
  * @param {HTMLElement} container - DOM element to render map into
  * @param {Object} options - Map options
  * @param {number} options.lat - Initial center latitude
  * @param {number} options.lng - Initial center longitude
  * @param {number} options.zoom - Initial zoom level
- * @param {string} options.mode - 'light' or 'dark'
  * @returns {google.maps.Map} The map instance
  */
 export function createMap(container, options = {}) {
     const {
         lat = 37.7749,
         lng = -122.4194,
-        zoom = 13,
-        mode = 'light'
+        zoom = 13
     } = options;
 
     const map = new google.maps.Map(container, {
         center: { lat, lng },
         zoom,
-        styles: MAP_STYLES[mode],
         mapId: 'pinkpath-map', // Required for AdvancedMarkerElement
         disableDefaultUI: false,
         zoomControl: true,
@@ -212,68 +116,6 @@ export function updateMarkerPosition(marker, lat, lng) {
     }
 }
 
-/**
- * Add light/dark mode toggle button to map
- *
- * @param {google.maps.Map} map - The Google Maps instance
- * @param {Object} modeState - State callbacks for mode management
- * @param {Function} modeState.getMode - Returns current mode ('light' or 'dark')
- * @param {Function} modeState.setMode - Sets current mode
- */
-export function addMapStyleToggle(map, modeState) {
-    // Create toggle button container
-    const container = document.createElement('div');
-    container.className = 'map-style-toggle';
-    container.innerHTML = `
-        <button class="style-toggle-btn">
-            <span class="toggle-option ${modeState.getMode() === 'light' ? 'active' : ''}">Light</span>
-            <span class="toggle-divider">|</span>
-            <span class="toggle-option ${modeState.getMode() === 'dark' ? 'active' : ''}">Dark</span>
-        </button>
-    `;
-
-    // Add click handler
-    container.querySelector('.style-toggle-btn').addEventListener('click', function() {
-        toggleMapStyle(map, this, modeState);
-    });
-
-    // Add to map
-    map.controls[google.maps.ControlPosition.TOP_RIGHT].push(container);
-}
-
-/**
- * Toggle between light and dark map styles
- */
-function toggleMapStyle(map, button, modeState) {
-    const currentMode = modeState.getMode();
-    const newMode = currentMode === 'light' ? 'dark' : 'light';
-
-    // Apply new style
-    map.setOptions({ styles: MAP_STYLES[newMode] });
-    modeState.setMode(newMode);
-
-    // Update button UI
-    const options = button.querySelectorAll('.toggle-option');
-    if (newMode === 'dark') {
-        options[0].classList.remove('active');
-        options[1].classList.add('active');
-        console.log('🌙 Switched to dark mode');
-    } else {
-        options[1].classList.remove('active');
-        options[0].classList.add('active');
-        console.log('☀️ Switched to light mode');
-    }
-}
-
-/**
- * Set map style directly
- *
- * @param {google.maps.Map} map - The map instance
- * @param {string} mode - 'light' or 'dark'
- */
-export function setMapStyle(map, mode) {
-    map.setOptions({ styles: MAP_STYLES[mode] });
-}
 
 /**
  * Fit map bounds to show all given points
