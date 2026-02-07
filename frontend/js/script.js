@@ -2754,6 +2754,8 @@ let reportModalMapListener = null;
 let selectedReportLocation = null;
 let selectedHazardTypes = [];
 let currentReportScope = 'spot';
+let isHazardSelectionMode = false;
+let hazardSelectionMarker = null;
 
 /**
  * Get the active map for reporting based on current screen
@@ -2769,13 +2771,141 @@ function getActiveMapForReporting() {
 }
 
 /**
+ * Enter hazard selection mode - Step 1 of two-step flow
+ * Shows banner and enables map click to select hazard location
+ */
+function enterHazardSelectionMode() {
+    console.log('[Report] Entering hazard selection mode...');
+
+    // Check auth first
+    if (!canSubmitReport()) {
+        // Open modal to show auth gate
+        openReportModal();
+        return;
+    }
+
+    // Set selection mode state
+    isHazardSelectionMode = true;
+
+    // Show the selection banner
+    const banner = document.getElementById('hazard-selection-banner');
+    if (banner) {
+        banner.classList.add('visible');
+    }
+
+    // Enable map click listener on active map
+    const activeMap = getActiveMapForReporting();
+    if (activeMap) {
+        // Remove any existing listener first
+        if (reportModalMapListener) {
+            google.maps.event.removeListener(reportModalMapListener);
+        }
+        reportModalMapListener = activeMap.addListener('click', handleHazardLocationSelect);
+    }
+
+    // Close mobile menu if open
+    const mobileMenu = document.getElementById('mobile-menu');
+    if (mobileMenu && mobileMenu.classList.contains('open')) {
+        mobileMenu.classList.remove('open');
+    }
+}
+
+/**
+ * Exit hazard selection mode without selecting a location
+ */
+function exitHazardSelectionMode() {
+    console.log('[Report] Exiting hazard selection mode...');
+
+    isHazardSelectionMode = false;
+
+    // Hide the selection banner
+    const banner = document.getElementById('hazard-selection-banner');
+    if (banner) {
+        banner.classList.remove('visible');
+    }
+
+    // Remove map click listener
+    if (reportModalMapListener) {
+        google.maps.event.removeListener(reportModalMapListener);
+        reportModalMapListener = null;
+    }
+
+    // Remove any temporary marker
+    if (hazardSelectionMarker) {
+        hazardSelectionMarker.setMap(null);
+        hazardSelectionMarker = null;
+    }
+
+    // Reset selected location
+    selectedReportLocation = null;
+}
+
+/**
+ * Handle map click during hazard selection mode - Step 2 of two-step flow
+ * Places marker and opens modal with location pre-filled
+ */
+function handleHazardLocationSelect(event) {
+    // Store the selected location
+    selectedReportLocation = {
+        lat: event.latLng.lat(),
+        lng: event.latLng.lng(),
+    };
+
+    console.log('[Report] Hazard location selected:', selectedReportLocation);
+
+    // Get the active map
+    const activeMap = getActiveMapForReporting();
+
+    // Remove any existing selection marker
+    if (hazardSelectionMarker) {
+        hazardSelectionMarker.setMap(null);
+    }
+
+    // Create a marker at the selected location
+    if (activeMap) {
+        hazardSelectionMarker = new google.maps.Marker({
+            position: event.latLng,
+            map: activeMap,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 12,
+                fillColor: '#FF1493',
+                fillOpacity: 1,
+                strokeColor: '#FFFFFF',
+                strokeWeight: 3,
+            },
+            title: 'Hazard Location',
+            zIndex: 1000,
+        });
+    }
+
+    // Exit selection mode (hides banner, removes listener)
+    isHazardSelectionMode = false;
+    const banner = document.getElementById('hazard-selection-banner');
+    if (banner) {
+        banner.classList.remove('visible');
+    }
+    if (reportModalMapListener) {
+        google.maps.event.removeListener(reportModalMapListener);
+        reportModalMapListener = null;
+    }
+
+    // Open the report modal with location pre-filled
+    openReportModal();
+}
+
+/**
  * Open the hazard report modal
+ * If selectedReportLocation is already set (from two-step flow), uses that location
  */
 function openReportModal() {
     console.log('[Report] Opening report modal...');
 
     const modal = document.getElementById('report-hazard-modal');
     if (!modal) return;
+
+    // Check if we have a pre-selected location from the two-step flow
+    const hasPreselectedLocation = selectedReportLocation !== null;
 
     // Check auth state
     const authGate = document.getElementById('report-auth-gate');
@@ -2800,7 +2930,44 @@ function openReportModal() {
         }
 
         populateHazardTypes();
-        resetReportModal();
+
+        // Only reset if we don't have a pre-selected location
+        if (hasPreselectedLocation) {
+            // Reset form fields but keep the location
+            selectedHazardTypes = [];
+            currentReportScope = 'spot';
+
+            // Reset hazard type checkboxes
+            document.querySelectorAll('.hazard-type-option input').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+
+            // Reset severity to medium
+            const mediumSeverity = document.querySelector('input[name="report-severity"][value="medium"]');
+            if (mediumSeverity) mediumSeverity.checked = true;
+
+            // Clear comment
+            const commentInput = document.getElementById('report-comment-input');
+            if (commentInput) commentInput.value = '';
+            updateReportCommentCharCount();
+
+            // Show the pre-selected location in the preview
+            const locationPreview = document.getElementById('report-location-preview');
+            const coordsDisplay = document.getElementById('report-location-coords');
+            const locationHint = document.querySelector('.location-hint');
+
+            if (locationPreview) locationPreview.style.display = 'flex';
+            if (coordsDisplay) {
+                coordsDisplay.textContent = `${selectedReportLocation.lat.toFixed(5)}, ${selectedReportLocation.lng.toFixed(5)}`;
+            }
+            // Hide the "tap the map" hint since location is already selected
+            if (locationHint) locationHint.style.display = 'none';
+
+            // Update submit button state
+            updateReportSubmitButton();
+        } else {
+            resetReportModal();
+        }
     } else {
         authGate.style.display = 'block';
         reportForm.style.display = 'none';
@@ -2809,10 +2976,13 @@ function openReportModal() {
 
     openModal('report-hazard-modal');
 
-    // Enable map click for spot reports on active map
-    const activeMap = getActiveMapForReporting();
-    if (activeMap && currentReportScope === 'spot') {
-        reportModalMapListener = activeMap.addListener('click', handleMapClickForReport);
+    // Only add map click listener if we don't have a pre-selected location
+    // (In two-step flow, location is already selected)
+    if (!hasPreselectedLocation) {
+        const activeMap = getActiveMapForReporting();
+        if (activeMap && currentReportScope === 'spot') {
+            reportModalMapListener = activeMap.addListener('click', handleMapClickForReport);
+        }
     }
 }
 
@@ -2826,6 +2996,21 @@ function closeReportModal() {
     if (reportModalMapListener) {
         google.maps.event.removeListener(reportModalMapListener);
         reportModalMapListener = null;
+    }
+
+    // Remove hazard selection marker from map
+    if (hazardSelectionMarker) {
+        hazardSelectionMarker.setMap(null);
+        hazardSelectionMarker = null;
+    }
+
+    // Reset location hint visibility
+    const locationHint = document.querySelector('.location-hint');
+    if (locationHint) locationHint.style.display = '';
+
+    // Exit selection mode if still active
+    if (isHazardSelectionMode) {
+        exitHazardSelectionMode();
     }
 
     resetReportModal();
@@ -4370,7 +4555,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // SEGMENT PIN PANEL
     // ========================================
     console.log('[Init] Setting up segment pin panel...');
-    wireButton('add-safety-note-btn', openReportModal);
+    wireButton('add-safety-note-btn', enterHazardSelectionMode);
     wireButton('close-pin-panel-btn', closePinPanel);
     wireButton('clear-pin-location-btn', clearPinLocation);
     wireButton('submit-pin-btn', handlePinSubmit);
@@ -4379,11 +4564,17 @@ document.addEventListener('DOMContentLoaded', function() {
     wireButton('rate-route-preview-btn', showRatingModal);
 
     // ========================================
+    // HAZARD SELECTION MODE
+    // ========================================
+    console.log('[Init] Setting up hazard selection mode...');
+    wireButton('hazard-selection-cancel-btn', exitHazardSelectionMode);
+
+    // ========================================
     // HAZARD REPORTING MODAL
     // ========================================
     console.log('[Init] Setting up hazard reporting modal...');
     wireModalBackdrop('report-hazard-modal');
-    wireButton('report-hazard-btn', openReportModal);
+    wireButton('report-hazard-btn', enterHazardSelectionMode);
     wireButton('report-modal-close-btn', closeReportModal);
     wireButton('report-sign-in-btn', () => {
         closeReportModal();
