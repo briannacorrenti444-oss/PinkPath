@@ -119,6 +119,17 @@ import {
     getRouteHazards
 } from './modules/controllers/reportingController.js';
 
+// Import offline controller
+import {
+    initOfflineHandling,
+    cacheCurrentRoute,
+    getCachedRoute,
+    clearCachedRoute,
+    savePendingSubmission,
+    isCurrentlyOffline,
+    hasPendingSubmissions
+} from './modules/controllers/offlineController.js';
+
 console.log('[PinkPath] All imports loaded successfully');
 
 // ========================================
@@ -251,6 +262,82 @@ let navigationWatchId = null;           // GPS watchPosition ID (for cleanup)
 // ----------------------------------------
 
 let currentMode = 'light';              // Map color mode: 'light' or 'dark'
+
+// ========================================
+// SESSION & ERROR HANDLING
+// ========================================
+
+/**
+ * Handle session expiration
+ * Shows a modal prompting user to sign in again
+ */
+function handleSessionExpired() {
+    console.log('[Auth] Session expired, showing re-auth modal');
+
+    // Create session expired modal if it doesn't exist
+    let modal = document.getElementById('session-expired-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'session-expired-modal';
+        modal.className = 'session-expired-modal';
+        modal.innerHTML = `
+            <div class="session-expired-content">
+                <svg class="session-expired-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                </svg>
+                <h3 class="session-expired-title">Session Expired</h3>
+                <p class="session-expired-message">Your session has expired. Please sign in again to continue.</p>
+                <div class="session-expired-buttons">
+                    <button class="btn-secondary" id="session-dismiss-btn">Later</button>
+                    <button class="btn-primary" id="session-signin-btn">Sign In</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Add event listeners
+        document.getElementById('session-dismiss-btn').addEventListener('click', () => {
+            modal.classList.remove('visible');
+        });
+
+        document.getElementById('session-signin-btn').addEventListener('click', () => {
+            modal.classList.remove('visible');
+            goToScreen('screen-auth');
+        });
+
+        // Close on backdrop click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.remove('visible');
+            }
+        });
+    }
+
+    // Show the modal
+    modal.classList.add('visible');
+}
+
+/**
+ * Show a global toast message
+ * @param {string} message
+ * @param {string} type - 'success', 'warning', 'error', 'info'
+ */
+function showGlobalToast(message, type = 'info') {
+    let toast = document.getElementById('global-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'global-toast';
+        toast.className = 'offline-toast';
+        document.body.appendChild(toast);
+    }
+
+    toast.textContent = message;
+    toast.className = `offline-toast ${type} visible`;
+
+    setTimeout(() => {
+        toast.classList.remove('visible');
+    }, 4000);
+}
 
 // ========================================
 // SCREEN NAVIGATION
@@ -554,17 +641,56 @@ async function getUserLocationForInput(inputId, onLocationSelected = null) {
 // ========================================
 
 /**
- * Wait for Google Maps to be ready
+ * Wait for Google Maps to be ready with timeout
+ * @param {number} timeoutMs - Timeout in milliseconds (default 15s)
  * @returns {Promise<void>}
  */
-function waitForGoogleMaps() {
-    return new Promise((resolve) => {
+function waitForGoogleMaps(timeoutMs = 15000) {
+    return new Promise((resolve, reject) => {
         if (window.google && window.google.maps) {
             resolve();
-        } else {
-            window.addEventListener('google-maps-ready', resolve, { once: true });
+            return;
         }
+
+        const timeoutId = setTimeout(() => {
+            reject(new Error('Google Maps failed to load'));
+        }, timeoutMs);
+
+        window.addEventListener('google-maps-ready', () => {
+            clearTimeout(timeoutId);
+            resolve();
+        }, { once: true });
+
+        // Also listen for error
+        window.addEventListener('google-maps-error', () => {
+            clearTimeout(timeoutId);
+            reject(new Error('Google Maps load error'));
+        }, { once: true });
     });
+}
+
+/**
+ * Show Google Maps error UI in a map container
+ * @param {HTMLElement} mapElement - The map container element
+ */
+function showMapsErrorUI(mapElement) {
+    if (!mapElement) return;
+
+    mapElement.innerHTML = `
+        <div class="maps-error-container">
+            <svg class="maps-error-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" opacity="0.3"/>
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zM7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 2.88-2.88 7.19-5 9.88C9.92 16.21 7 11.85 7 9z"/>
+            </svg>
+            <h3 class="maps-error-title">Map couldn't load</h3>
+            <p class="maps-error-message">Check your internet connection and try again.</p>
+            <div class="maps-error-retry">
+                <button class="btn-primary maps-retry-btn" onclick="location.reload()">
+                    Retry
+                </button>
+            </div>
+        </div>
+    `;
 }
 
 /**
@@ -579,10 +705,9 @@ async function initializeRouteMap() {
         return;
     }
 
-    // Wait for Google Maps API
-    await waitForGoogleMaps();
-
     try {
+        // Wait for Google Maps API with timeout
+        await waitForGoogleMaps();
         // Clean up existing map
         if (routeMap) {
             // Remove existing overlays
@@ -617,6 +742,8 @@ async function initializeRouteMap() {
 
     } catch (error) {
         console.error('❌ Error initializing route map:', error);
+        showMapsErrorUI(mapElement);
+        showGlobalToast('Map failed to load. Check your connection.', 'error');
     }
 }
 
@@ -633,10 +760,9 @@ async function initializeNavigationMap() {
         return false;
     }
 
-    // Wait for Google Maps API
-    await waitForGoogleMaps();
-
     try {
+        // Wait for Google Maps API with timeout
+        await waitForGoogleMaps();
         // Clean up existing map
         if (navigationMap) {
             removePolylines(navOmbreRoutePolylines);
@@ -662,6 +788,8 @@ async function initializeNavigationMap() {
         return true;
     } catch (error) {
         console.error('❌ Error initializing navigation map:', error);
+        showMapsErrorUI(mapElement);
+        showGlobalToast('Navigation map failed to load.', 'error');
         return false;
     }
 }
@@ -907,16 +1035,51 @@ function drawRoutesOnMap(map, routes, selectedIdx) {
     // Alternative routes drawing disabled for beta
 }
 
+// Loading timeout handler
+let loadingTimeoutId = null;
+
 /**
- * Update loading state on route results screen
+ * Update loading state on route results screen with timeout handling
+ * @param {boolean} isLoading - Whether loading is in progress
+ * @param {number} timeoutMs - Timeout in ms before showing "taking longer" message
  */
-function updateRouteLoadingState(isLoading) {
+function updateRouteLoadingState(isLoading, timeoutMs = 15000) {
     const loadingEl = document.getElementById('route-loading');
     const resultsEl = document.getElementById('route-results-content');
 
+    // Clear any existing timeout
+    if (loadingTimeoutId) {
+        clearTimeout(loadingTimeoutId);
+        loadingTimeoutId = null;
+    }
+
     if (loadingEl) {
         loadingEl.style.display = isLoading ? 'flex' : 'none';
+
+        // Remove timeout message if exists
+        const timeoutMsg = loadingEl.querySelector('.loading-timeout-message');
+        if (timeoutMsg) {
+            timeoutMsg.remove();
+        }
+
+        // Add timeout handler for long loading
+        if (isLoading) {
+            loadingTimeoutId = setTimeout(() => {
+                // Check if still loading
+                if (loadingEl.style.display === 'flex') {
+                    // Add "taking longer than expected" message
+                    const msgEl = document.createElement('div');
+                    msgEl.className = 'loading-timeout-message';
+                    msgEl.innerHTML = `
+                        <p>This is taking longer than usual...</p>
+                        <button class="btn-secondary" onclick="location.reload()">Retry</button>
+                    `;
+                    loadingEl.appendChild(msgEl);
+                }
+            }, timeoutMs);
+        }
     }
+
     if (resultsEl) {
         resultsEl.style.display = isLoading ? 'none' : 'block';
     }
@@ -1418,6 +1581,15 @@ async function startNavigation() {
         alert('⚠️ No route calculated. Please plan a route first.');
         return;
     }
+
+    // Cache route for offline use
+    cacheCurrentRoute(currentRouteData, {
+        start: selectedStart,
+        destination: selectedDestination,
+        routeSteps: routeSteps,
+        isPreviewMode: isPreviewMode,
+    });
+    console.log('[Navigation] Route cached for offline use');
 
     // Detect if user is at start point
     const atStartPoint = await checkIfAtStartPoint();
@@ -2276,7 +2448,24 @@ async function handleRatingSubmit() {
         showRatingSuccess();
     } else {
         console.error('[Rating] Submission failed:', result.error);
-        alert('Failed to submit rating: ' + result.error);
+
+        // Check if offline or network error - offer to save for later
+        if (isCurrentlyOffline() || result.code === 'NETWORK_ERROR' || result.code === 'TIMEOUT_ERROR') {
+            const saved = savePendingSubmission('rating', {
+                ...ratingData,
+                context: getRatingContext(),
+            });
+
+            if (saved) {
+                showGlobalToast('Rating saved. Will submit when back online.', 'warning');
+                showRatingSuccess(); // Close modal
+            } else {
+                showGlobalToast('Failed to save rating. Please try again.', 'error');
+            }
+        } else {
+            showGlobalToast('Failed to submit rating: ' + result.error, 'error');
+        }
+
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.textContent = 'Submit Rating';
@@ -2871,7 +3060,27 @@ async function handleReportSubmit() {
         }
     } else {
         console.error('[Report] Submission failed:', result.error);
-        alert('Failed to submit report: ' + result.error);
+
+        // Check if offline or network error - offer to save for later
+        if (isCurrentlyOffline() || result.code === 'NETWORK_ERROR' || result.code === 'TIMEOUT_ERROR') {
+            const saved = savePendingSubmission('report', {
+                ...reportData,
+                context: getReportContext(),
+            });
+
+            if (saved) {
+                showGlobalToast('Report saved. Will submit when back online.', 'warning');
+                // Show success state anyway - user did their part
+                const reportForm = document.getElementById('report-form');
+                const reportSuccess = document.getElementById('report-success');
+                if (reportForm) reportForm.style.display = 'none';
+                if (reportSuccess) reportSuccess.style.display = 'block';
+            } else {
+                showGlobalToast('Failed to save report. Please try again.', 'error');
+            }
+        } else {
+            showGlobalToast('Failed to submit report: ' + result.error, 'error');
+        }
     }
 
     if (submitBtn) {
@@ -3739,6 +3948,17 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('[Init] PinkPath starting (Google Maps version)...');
 
     try {
+
+    // ========================================
+    // OFFLINE HANDLING INITIALIZATION
+    // ========================================
+    initOfflineHandling();
+    console.log('[Init] Offline handling initialized');
+
+    // ========================================
+    // SESSION EXPIRATION HANDLING
+    // ========================================
+    window.addEventListener('auth-expired', handleSessionExpired);
 
     // ========================================
     // SCREEN INITIALIZATION
