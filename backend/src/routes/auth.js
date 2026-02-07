@@ -60,14 +60,32 @@ setInterval(() => {
 export default async function authRoutes(fastify) {
 
   // ==============================================
+  // RATE LIMITING CONFIG FOR AUTH ENDPOINTS
+  // Stricter limits to prevent brute force attacks
+  // ==============================================
+  const authRateLimitConfig = {
+    max: 5,                    // 5 attempts
+    timeWindow: '1 minute',    // per minute
+    errorResponseBuilder: (request, context) => ({
+      error: 'Too Many Attempts',
+      message: `Too many attempts. Please wait ${Math.ceil(context.ttl / 1000)} seconds before trying again.`,
+      code: 'RATE_001',
+    }),
+  };
+
+  // ==============================================
   // LOCAL AUTHENTICATION
   // ==============================================
 
   /**
    * POST /api/auth/register
    * Register a new user with email/password
+   * SECURITY: Rate limited to 5 attempts per minute
    */
   fastify.post('/register', {
+    config: {
+      rateLimit: authRateLimitConfig,
+    },
     schema: {
       body: {
         type: 'object',
@@ -146,8 +164,12 @@ export default async function authRoutes(fastify) {
   /**
    * POST /api/auth/login
    * Login with email/password
+   * SECURITY: Rate limited to 5 attempts per minute
    */
   fastify.post('/login', {
+    config: {
+      rateLimit: authRateLimitConfig,
+    },
     schema: {
       body: {
         type: 'object',

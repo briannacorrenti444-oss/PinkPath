@@ -9,6 +9,14 @@
 
 import { apiConfig } from '../config/index.js';
 import { reverseGeocode } from './geocodingService.js';
+import { withCircuitBreaker } from './circuitBreaker.js';
+
+// Circuit breaker config for Google Routes API
+const CIRCUIT_CONFIG = {
+  failureThreshold: 3,        // Open after 3 consecutive failures
+  successThreshold: 2,        // Close after 2 successes in half-open
+  timeout: 30000,             // Try half-open after 30 seconds
+};
 
 // ==============================================
 // GOOGLE ROUTES API - BASE ROUTES
@@ -40,41 +48,51 @@ export async function getGoogleRoutes(start, destination, options = {}) {
   } = options;
 
   try {
-    const response = await fetch(apiConfig.google.routesUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.polyline,routes.legs.steps.navigationInstruction,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration,routes.legs.steps.startLocation,routes.routeLabels',
+    // Use circuit breaker to prevent cascading failures
+    const data = await withCircuitBreaker(
+      'google-routes-api',
+      async () => {
+        const response = await fetch(apiConfig.google.routesUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.polyline,routes.legs.steps.navigationInstruction,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration,routes.legs.steps.startLocation,routes.routeLabels',
+          },
+          body: JSON.stringify({
+            origin: {
+              location: {
+                latLng: {
+                  latitude: start.lat,
+                  longitude: start.lng,
+                },
+              },
+            },
+            destination: {
+              location: {
+                latLng: {
+                  latitude: destination.lat,
+                  longitude: destination.lng,
+                },
+              },
+            },
+            travelMode,
+            computeAlternativeRoutes,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Google Routes API error: ${response.status} - ${errorText}`);
+        }
+
+        return response.json();
       },
-      body: JSON.stringify({
-        origin: {
-          location: {
-            latLng: {
-              latitude: start.lat,
-              longitude: start.lng,
-            },
-          },
-        },
-        destination: {
-          location: {
-            latLng: {
-              latitude: destination.lat,
-              longitude: destination.lng,
-            },
-          },
-        },
-        travelMode,
-        computeAlternativeRoutes,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Google Routes API error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
+      {
+        config: CIRCUIT_CONFIG,
+        // No fallback - let the caller handle the error
+      }
+    );
 
     // DIAGNOSTIC: Log raw Google API response structure
     console.log('[GoogleRoutes] DIAGNOSTIC - Raw API response keys:', Object.keys(data));

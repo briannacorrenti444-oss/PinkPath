@@ -12,6 +12,24 @@ import { query } from '../db/connection.js';
 export default async function feedbackRoutes(fastify, options) {
 
   // ============================================
+  // RATE LIMITING CONFIG
+  // ============================================
+
+  /**
+   * Rate limit for feature votes - 10 votes per hour per IP
+   * Prevents spam voting while allowing legitimate exploration
+   */
+  const featureVoteRateLimit = {
+    max: 10,
+    timeWindow: '1 hour',
+    errorResponseBuilder: (request, context) => ({
+      error: 'Too Many Votes',
+      message: 'You\'ve reached the voting limit. Please try again later.',
+      code: 'RATE_001',
+    }),
+  };
+
+  // ============================================
   // FEATURE VOTES
   // ============================================
 
@@ -19,8 +37,13 @@ export default async function feedbackRoutes(fastify, options) {
    * POST /feature-votes
    * Log a feature vote (works with or without authentication)
    * Uses session_id for anonymous users, user_id for authenticated users
+   * SECURITY: Rate limited to 10 votes per hour per IP
    */
-  fastify.post('/feature-votes', async (request, reply) => {
+  fastify.post('/feature-votes', {
+    config: {
+      rateLimit: featureVoteRateLimit,
+    },
+  }, async (request, reply) => {
     const { feature_key, session_id } = request.body;
 
     // Validate feature_key

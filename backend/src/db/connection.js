@@ -56,6 +56,97 @@ const poolConfig = {
 let pool = null;
 
 // ==============================================
+// POOL MONITORING
+// ==============================================
+
+/**
+ * Pool statistics for monitoring
+ */
+const poolStats = {
+  totalConnections: 0,
+  idleConnections: 0,
+  waitingClients: 0,
+  errors: 0,
+  lastError: null,
+  lastErrorTime: null,
+  acquireCount: 0,
+  releaseCount: 0,
+};
+
+/**
+ * Get current pool status for health checks
+ * @returns {object} Pool status information
+ */
+export function getPoolStatus() {
+  if (!pool) {
+    return {
+      initialized: false,
+      error: 'Pool not initialized',
+    };
+  }
+
+  return {
+    initialized: true,
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+    maxConnections: poolConfig.max,
+    utilizationPercent: Math.round((pool.totalCount / poolConfig.max) * 100),
+    isHealthy: pool.totalCount < poolConfig.max && poolStats.errors < 5,
+    stats: {
+      ...poolStats,
+      acquireCount: poolStats.acquireCount,
+      releaseCount: poolStats.releaseCount,
+    },
+  };
+}
+
+/**
+ * Set up pool event listeners for monitoring
+ * @param {pg.Pool} poolInstance - The connection pool
+ */
+function setupPoolMonitoring(poolInstance) {
+  // Connection acquired from pool
+  poolInstance.on('acquire', () => {
+    poolStats.acquireCount++;
+    poolStats.totalConnections = poolInstance.totalCount;
+    poolStats.idleConnections = poolInstance.idleCount;
+    poolStats.waitingClients = poolInstance.waitingCount;
+
+    // Warn if pool is near exhaustion (>80% used)
+    const utilizationPercent = (poolInstance.totalCount / poolConfig.max) * 100;
+    if (utilizationPercent >= 80) {
+      console.warn(`[DB] Pool high utilization: ${utilizationPercent.toFixed(0)}% (${poolInstance.totalCount}/${poolConfig.max} connections)`);
+    }
+  });
+
+  // Connection released back to pool
+  poolInstance.on('release', () => {
+    poolStats.releaseCount++;
+    poolStats.totalConnections = poolInstance.totalCount;
+    poolStats.idleConnections = poolInstance.idleCount;
+  });
+
+  // New connection created
+  poolInstance.on('connect', () => {
+    console.log(`[DB] New connection created (total: ${poolInstance.totalCount})`);
+  });
+
+  // Connection removed from pool
+  poolInstance.on('remove', () => {
+    console.log(`[DB] Connection removed (total: ${poolInstance.totalCount})`);
+  });
+
+  // Pool error
+  poolInstance.on('error', (err) => {
+    poolStats.errors++;
+    poolStats.lastError = err.message;
+    poolStats.lastErrorTime = new Date().toISOString();
+    console.error('[DB] Pool error:', err.message);
+  });
+}
+
+// ==============================================
 // CONNECTION MANAGEMENT
 // ==============================================
 
@@ -68,9 +159,13 @@ export async function initializeDatabase() {
     // Create connection pool
     pool = new Pool(poolConfig);
 
+    // Set up monitoring
+    setupPoolMonitoring(pool);
+
     // Test connection
     const client = await pool.connect();
     console.log('[DB] Connected to PostgreSQL');
+    console.log(`[DB] Pool configured: max=${poolConfig.max}, idleTimeout=${poolConfig.idleTimeoutMillis}ms`);
 
     // Run schema initialization
     await initializeSchema(client);
@@ -125,15 +220,28 @@ export async function query(text, params = []) {
   }
 
   const start = Date.now();
-  const result = await pool.query(text, params);
-  const duration = Date.now() - start;
 
-  // Log slow queries in development
-  if (process.env.NODE_ENV !== 'production' && duration > 100) {
-    console.log(`[DB] Slow query (${duration}ms):`, text.substring(0, 100));
+  try {
+    const result = await pool.query(text, params);
+    const duration = Date.now() - start;
+
+    // Log slow queries (100ms in dev, 500ms in prod)
+    const slowThreshold = isProduction ? 500 : 100;
+    if (duration > slowThreshold) {
+      console.warn(`[DB] Slow query (${duration}ms):`, text.substring(0, 100));
+    }
+
+    return result;
+  } catch (error) {
+    const duration = Date.now() - start;
+    console.error(`[DB] Query failed after ${duration}ms:`, text.substring(0, 100));
+    console.error(`[DB] Error:`, error.message);
+
+    // Enhance error with query context
+    error.queryDuration = duration;
+    error.queryText = text.substring(0, 200);
+    throw error;
   }
-
-  return result;
 }
 
 // ==============================================

@@ -217,13 +217,13 @@ async function logShareIntent(tripId, type) {
 async function logSosIntent() {
     try {
         // Get current position for logging
-        const position = await getCurrentPosition();
+        const geoResult = await getCurrentPosition();
         await authFetch('/api/trips/log-sos-intent', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                lat: position?.coords?.latitude || 0,
-                lng: position?.coords?.longitude || 0,
+                lat: geoResult.position?.coords?.latitude || 0,
+                lng: geoResult.position?.coords?.longitude || 0,
             }),
         });
         console.log('[TripController] Logged SOS intent');
@@ -233,18 +233,78 @@ async function logSosIntent() {
 }
 
 /**
- * Get current position (promisified)
+ * Geolocation error types
+ */
+export const GEO_ERROR = {
+    NOT_SUPPORTED: 'NOT_SUPPORTED',
+    PERMISSION_DENIED: 'PERMISSION_DENIED',
+    POSITION_UNAVAILABLE: 'POSITION_UNAVAILABLE',
+    TIMEOUT: 'TIMEOUT',
+    UNKNOWN: 'UNKNOWN',
+};
+
+/**
+ * Get user-friendly message for geolocation error
+ * @param {string} errorType - Error type from GEO_ERROR
+ * @returns {string} User-friendly error message
+ */
+export function getGeoErrorMessage(errorType) {
+    const messages = {
+        [GEO_ERROR.NOT_SUPPORTED]: 'Your browser does not support location services.',
+        [GEO_ERROR.PERMISSION_DENIED]: 'Location access was denied. Please enable location in your browser settings.',
+        [GEO_ERROR.POSITION_UNAVAILABLE]: 'Unable to determine your location. Please try again.',
+        [GEO_ERROR.TIMEOUT]: 'Location request timed out. Please check your GPS and try again.',
+        [GEO_ERROR.UNKNOWN]: 'An unknown location error occurred.',
+    };
+    return messages[errorType] || messages[GEO_ERROR.UNKNOWN];
+}
+
+/**
+ * Get current position (promisified) with detailed error handling
+ * @returns {Promise<{position: GeolocationPosition|null, error: string|null, errorType: string|null}>}
  */
 function getCurrentPosition() {
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
-            resolve(null);
+            resolve({
+                position: null,
+                error: getGeoErrorMessage(GEO_ERROR.NOT_SUPPORTED),
+                errorType: GEO_ERROR.NOT_SUPPORTED,
+            });
             return;
         }
+
         navigator.geolocation.getCurrentPosition(
-            (position) => resolve(position),
-            () => resolve(null),
-            { enableHighAccuracy: true, timeout: 5000 }
+            (position) => resolve({
+                position,
+                error: null,
+                errorType: null,
+            }),
+            (error) => {
+                let errorType;
+                switch (error.code) {
+                    case error.PERMISSION_DENIED:
+                        errorType = GEO_ERROR.PERMISSION_DENIED;
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        errorType = GEO_ERROR.POSITION_UNAVAILABLE;
+                        break;
+                    case error.TIMEOUT:
+                        errorType = GEO_ERROR.TIMEOUT;
+                        break;
+                    default:
+                        errorType = GEO_ERROR.UNKNOWN;
+                }
+
+                console.warn(`[TripController] Geolocation error: ${errorType}`, error.message);
+
+                resolve({
+                    position: null,
+                    error: getGeoErrorMessage(errorType),
+                    errorType,
+                });
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
         );
     });
 }

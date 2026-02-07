@@ -82,6 +82,33 @@ export default async function routeRoutes(fastify) {
         });
       }
 
+      // Validate start != destination (avoid zero-distance routes)
+      const MIN_DISTANCE_METERS = 50; // At least 50 meters apart
+      const latDiff = Math.abs(start.lat - destination.lat);
+      const lngDiff = Math.abs(start.lng - destination.lng);
+      // Rough distance calculation (good enough for validation)
+      const approxDistanceMeters = Math.sqrt(
+        Math.pow(latDiff * 111000, 2) + Math.pow(lngDiff * 85000, 2)
+      );
+
+      if (approxDistanceMeters < MIN_DISTANCE_METERS) {
+        return reply.status(400).send({
+          error: 'Invalid route',
+          message: 'Start and destination are too close together. Please choose different locations.',
+          code: 'ROUTE_002',
+        });
+      }
+
+      // Validate reasonable walking distance (max 20 miles / ~32 km)
+      const MAX_WALKING_METERS = 32000;
+      if (approxDistanceMeters > MAX_WALKING_METERS) {
+        return reply.status(400).send({
+          error: 'Distance too far',
+          message: 'This route is too far for walking. Consider using transportation for part of the journey.',
+          code: 'ROUTE_003',
+        });
+      }
+
       // Get user preferences if authenticated
       let userPreferences = preferences || {};
       if (request.user) {
@@ -105,15 +132,20 @@ export default async function routeRoutes(fastify) {
       // Calculate routes using the integration algorithm
       const routes = await calculateSafeRoutes(start, destination, userPreferences);
 
+      // Track warnings to include in response
+      const warnings = [];
+      let routeHistoryId = null;
+
       // Save route history if user is authenticated
       if (request.user && routes.safest) {
         try {
-          await query(
+          const historyResult = await query(
             `INSERT INTO route_history
              (user_id, start_lat, start_lng, end_lat, end_lng,
               start_address, end_address, safety_score, distance_meters,
               duration_seconds, route_type)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'safest')`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'safest')
+             RETURNING id`,
             [
               request.user.id,
               start.lat,
@@ -127,9 +159,14 @@ export default async function routeRoutes(fastify) {
               routes.safest.durationSeconds,
             ]
           );
+          routeHistoryId = historyResult.rows[0]?.id;
         } catch (e) {
-          // Don't fail the request if history save fails
-          fastify.log.warn('Failed to save route history:', e);
+          // Don't fail the request if history save fails, but log and warn
+          fastify.log.error('Failed to save route history:', e);
+          warnings.push({
+            code: 'HISTORY_SAVE_FAILED',
+            message: 'Route history could not be saved',
+          });
         }
       }
 
@@ -145,7 +182,9 @@ export default async function routeRoutes(fastify) {
           timestamp: new Date().toISOString(),
           inServiceArea: true,
           routesAnalyzed: routes.allRoutes?.length || routes.totalRoutesAnalyzed || 8,
+          routeHistoryId,
         },
+        warnings: warnings.length > 0 ? warnings : undefined,
       });
 
     } catch (error) {

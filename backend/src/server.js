@@ -32,7 +32,7 @@ import feedbackRoutes from './routes/feedback.js';
 import reportingRoutes from './routes/reporting.js';
 
 // Import database
-import { initializeDatabase, closeDatabase } from './db/connection.js';
+import { initializeDatabase, closeDatabase, getPoolStatus } from './db/connection.js';
 
 // Import services
 // BETA: Delay monitoring disabled - requires Twilio for automatic notifications
@@ -238,11 +238,19 @@ server.decorate('authenticate', async function (request, reply) {
  * Health check endpoint for monitoring
  */
 server.get('/health', async (request, reply) => {
+  const poolStatus = getPoolStatus();
+
   return {
-    status: 'healthy',
+    status: poolStatus.isHealthy ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
     version: '1.0.0',
     environment: process.env.NODE_ENV || 'development',
+    database: {
+      connected: poolStatus.initialized,
+      poolUtilization: `${poolStatus.utilizationPercent || 0}%`,
+      activeConnections: poolStatus.totalCount || 0,
+      maxConnections: poolStatus.maxConnections || 0,
+    },
   };
 });
 
