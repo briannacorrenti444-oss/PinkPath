@@ -354,6 +354,13 @@ function goToScreen(screenId) {
         screen.classList.remove('active');
     });
 
+    // Exit hazard selection mode if leaving route/navigation screens
+    if (screenId !== 'screen-route-results' && screenId !== 'screen-active-navigation') {
+        if (typeof exitHazardSelectionMode === 'function' && isHazardSelectionMode) {
+            exitHazardSelectionMode();
+        }
+    }
+
     // Show the target screen
     const targetScreen = document.getElementById(screenId);
     if (targetScreen) {
@@ -2773,14 +2780,33 @@ function getActiveMapForReporting() {
 /**
  * Enter hazard selection mode - Step 1 of two-step flow
  * Shows banner and enables map click to select hazard location
+ * Only works on route preview or navigation screens
  */
 function enterHazardSelectionMode() {
     console.log('[Report] Entering hazard selection mode...');
+
+    // Verify user is on a valid screen (route preview or navigation)
+    const routeScreen = document.getElementById('screen-route-results');
+    const navScreen = document.getElementById('screen-active-navigation');
+    const isOnValidScreen = (routeScreen && routeScreen.classList.contains('active')) ||
+                            (navScreen && navScreen.classList.contains('active'));
+
+    if (!isOnValidScreen) {
+        console.warn('[Report] Cannot enter selection mode - not on route or navigation screen');
+        return;
+    }
 
     // Check auth first
     if (!canSubmitReport()) {
         // Open modal to show auth gate
         openReportModal();
+        return;
+    }
+
+    // Get active map - must exist to enter selection mode
+    const activeMap = getActiveMapForReporting();
+    if (!activeMap) {
+        console.warn('[Report] Cannot enter selection mode - no active map');
         return;
     }
 
@@ -2794,14 +2820,11 @@ function enterHazardSelectionMode() {
     }
 
     // Enable map click listener on active map
-    const activeMap = getActiveMapForReporting();
-    if (activeMap) {
-        // Remove any existing listener first
-        if (reportModalMapListener) {
-            google.maps.event.removeListener(reportModalMapListener);
-        }
-        reportModalMapListener = activeMap.addListener('click', handleHazardLocationSelect);
+    // Remove any existing listener first
+    if (reportModalMapListener) {
+        google.maps.event.removeListener(reportModalMapListener);
     }
+    reportModalMapListener = activeMap.addListener('click', handleHazardLocationSelect);
 
     // Close mobile menu if open
     const mobileMenu = document.getElementById('mobile-menu');

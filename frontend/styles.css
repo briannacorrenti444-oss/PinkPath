@@ -6005,6 +6005,7 @@ END OF ALTERNATIVE ROUTES STYLES - DISABLED FOR BETA */
 
 /* Hazard Selection Mode Banner */
 .hazard-selection-banner {
+    display: none;
     position: fixed;
     top: 70px;
     left: 0;
@@ -6013,13 +6014,23 @@ END OF ALTERNATIVE ROUTES STYLES - DISABLED FOR BETA */
     color: white;
     padding: 16px 20px;
     z-index: 9000;
-    transform: translateY(-150%);
-    transition: transform 0.3s ease;
     box-shadow: 0 4px 20px rgba(255, 20, 147, 0.4);
+    animation: slideDown 0.3s ease forwards;
 }
 
 .hazard-selection-banner.visible {
-    transform: translateY(0);
+    display: block;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 .hazard-selection-content {
