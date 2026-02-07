@@ -316,8 +316,8 @@ export function clearLocationSelected(inputId) {
 }
 
 /**
- * Set up manual geocoding for pasted/typed addresses
- * Uses Google Geocoder directly - triggered by Enter key or blur (focus out)
+ * Set up manual geocoding for pasted addresses
+ * Uses paste event on wrapper (bubbles through closed shadow DOM) and Clipboard API
  *
  * @param {string} inputId - The ID of the autocomplete input
  * @param {Function} onLocationSelected - Called with location object when geocoding succeeds
@@ -330,98 +330,85 @@ export function setupPasteHandler(inputId, onLocationSelected) {
     }
 
     const { wrapper, element } = instance;
-    let input = null;
-    let retryCount = 0;
-    const maxRetries = 5;
+    let lastGeocodedValue = '';
 
-    // Function to find the input element in shadow DOM
-    function findInput() {
-        // Try shadow root first
-        if (element && element.shadowRoot) {
-            input = element.shadowRoot.querySelector('input');
-        }
-        // Fallback to regular DOM query
-        if (!input && wrapper) {
-            input = wrapper.querySelector('input');
-        }
-        return input;
-    }
-
-    // Function to set up event listeners once input is found
-    function setupListeners() {
-        if (!findInput()) {
-            retryCount++;
-            if (retryCount < maxRetries) {
-                console.log(`[searchController] Retrying to find input (${retryCount}/${maxRetries})...`);
-                setTimeout(setupListeners, 300);
-            } else {
-                console.warn(`[searchController] Could not find input for ${inputId} after ${maxRetries} retries`);
-            }
+    // Listen for paste events on the wrapper - paste events bubble through shadow DOM
+    wrapper.addEventListener('paste', async (event) => {
+        // Skip if dropdown was already used
+        if (locationSelectedViaDropdown.get(inputId)) {
+            console.log('[searchController] Skipping paste geocode - dropdown was used');
+            locationSelectedViaDropdown.set(inputId, false);
             return;
         }
 
-        let lastGeocodedValue = '';
-
-        // Helper function to geocode the current input value
-        async function geocodeCurrentValue() {
-            const value = input.value ? input.value.trim() : '';
-
-            // Skip if dropdown was already used, value is too short, or already geocoded
-            if (locationSelectedViaDropdown.get(inputId)) {
-                console.log('[searchController] Skipping geocode - location already selected via dropdown');
-                locationSelectedViaDropdown.set(inputId, false); // Reset for next time
-                return;
-            }
-
-            if (value.length < 10) {
-                console.log('[searchController] Address too short to geocode');
-                return;
-            }
-
-            if (value === lastGeocodedValue) {
-                console.log('[searchController] Address already geocoded');
-                return;
-            }
-
-            console.log('[searchController] Geocoding pasted/typed address:', value.substring(0, 50) + '...');
-
-            const location = await geocodeWithGoogle(value);
-
-            if (location) {
-                lastGeocodedValue = value;
-                console.log('[searchController] Address geocoded successfully');
-                onLocationSelected(location);
-
-                // Update input to show formatted address
-                if (location.formattedAddress && location.formattedAddress !== value) {
-                    input.value = location.formattedAddress;
-                }
-            } else {
-                console.log('[searchController] Could not geocode - user should select from dropdown');
-            }
+        // Get pasted text from clipboard data
+        let pastedText = '';
+        if (event.clipboardData) {
+            pastedText = event.clipboardData.getData('text/plain');
         }
 
-        // Listen for Enter key
-        input.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                console.log('[searchController] Enter key pressed, triggering geocode');
-                geocodeCurrentValue();
+        if (!pastedText || pastedText.trim().length < 10) {
+            console.log('[searchController] Pasted text too short to geocode');
+            return;
+        }
+
+        const trimmedText = pastedText.trim();
+
+        // Skip if already geocoded this exact value
+        if (trimmedText === lastGeocodedValue) {
+            console.log('[searchController] Already geocoded this address');
+            return;
+        }
+
+        console.log('[searchController] Paste detected, geocoding:', trimmedText.substring(0, 50) + '...');
+
+        // Small delay to let the paste complete in the input
+        setTimeout(async () => {
+            const location = await geocodeWithGoogle(trimmedText);
+
+            if (location) {
+                lastGeocodedValue = trimmedText;
+                console.log('[searchController] Pasted address geocoded successfully:', location.name);
+                onLocationSelected(location);
+            } else {
+                console.log('[searchController] Could not geocode pasted text - user should select from dropdown');
             }
-        });
+        }, 100);
+    });
 
-        // Listen for blur (focus out) with a small delay to allow dropdown selection
-        input.addEventListener('blur', () => {
-            // Delay to allow gmp-select event to fire first if user clicked dropdown
-            setTimeout(() => {
-                geocodeCurrentValue();
-            }, 300);
-        });
+    // Also listen for keydown on the element to capture Enter key
+    element.addEventListener('keydown', async (event) => {
+        if (event.key === 'Enter') {
+            // Skip if dropdown was already used
+            if (locationSelectedViaDropdown.get(inputId)) {
+                console.log('[searchController] Skipping Enter geocode - dropdown was used');
+                locationSelectedViaDropdown.set(inputId, false);
+                return;
+            }
 
-        console.log(`[searchController] Paste/type handler ready for: ${inputId}`);
-    }
+            // Try to read clipboard as fallback if we can't access input value
+            try {
+                const clipboardText = await navigator.clipboard.readText();
+                if (clipboardText && clipboardText.trim().length >= 10) {
+                    const trimmedText = clipboardText.trim();
 
-    // Start trying to set up listeners
-    setupListeners();
+                    if (trimmedText !== lastGeocodedValue) {
+                        console.log('[searchController] Enter pressed, geocoding clipboard:', trimmedText.substring(0, 50) + '...');
+
+                        const location = await geocodeWithGoogle(trimmedText);
+                        if (location) {
+                            lastGeocodedValue = trimmedText;
+                            console.log('[searchController] Address geocoded on Enter:', location.name);
+                            onLocationSelected(location);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.log('[searchController] Could not read clipboard:', err.message);
+            }
+        }
+    });
+
+    console.log(`[searchController] Paste handler ready for: ${inputId}`);
 }
 
