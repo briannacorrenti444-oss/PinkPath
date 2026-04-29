@@ -50,18 +50,19 @@ services:
 databases:
   # PostgreSQL Database
   - name: pinkpath-db
-    plan: free        # Free tier: 90 days, then need to recreate or upgrade
+    plan: starter     # $7/month - persistent, no expiration
     databaseName: pinkpath
     region: oregon    # Same region as backend for low latency
 
 # ==============================================
 # NOTES
 # ==============================================
-# Free tier limitations:
-# - Web services spin down after 15 min inactivity (cold starts ~30s)
-# - PostgreSQL free tier expires after 90 days
-# - 750 hours/month of running time
+# Plan summary:
+# - Web service: free tier (spins down after 15min idle, ~30s cold start)
+# - PostgreSQL: starter tier ($7/month, persistent, no expiration)
 #
-# For beta testing with 50-100 users, free tier works fine.
-# Upgrade to paid ($7/month) to remove cold starts.
+# Web service free tier still has cold-start latency (~30s after
+# 15 min idle) and a 750 hours/month cap. Upgrade web service to
+# Starter ($7/month) when ready for real production traffic to
+# remove cold starts.
 # ==============================================
