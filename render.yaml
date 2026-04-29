@@ -50,7 +50,7 @@ services:
 databases:
   # PostgreSQL Database
   - name: pinkpath-db
-    plan: starter     # $7/month - persistent, no expiration
+    plan: basic-256mb # ~$6-7/month - persistent, no expiration
     databaseName: pinkpath
     region: oregon    # Same region as backend for low latency
 
@@ -59,7 +59,7 @@ databases:
 # ==============================================
 # Plan summary:
 # - Web service: free tier (spins down after 15min idle, ~30s cold start)
-# - PostgreSQL: starter tier ($7/month, persistent, no expiration)
+# - PostgreSQL: basic-256mb tier (~$6-7/month, persistent, no expiration)
 #
 # Web service free tier still has cold-start latency (~30s after
 # 15 min idle) and a 750 hours/month cap. Upgrade web service to
